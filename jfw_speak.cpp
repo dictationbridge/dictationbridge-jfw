@@ -23,15 +23,16 @@ return;\
 }\
 } while(0)
 
-std::mutex queue_m;
-std::deque<BSTR> queue;
-
+DISPID id;
+DISPPARAMS params;
+VARIANTARG args[2];
+IDispatch *jfw = nullptr;
 
 void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
-	printf("Got text\n");
 	auto s = SysAllocString(text);
-	std::lock_guard<std::mutex> g(queue_m);
-	queue.push_back(s);
+	args[1].bstrVal = s;
+	jfw->Invoke(id, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &params, NULL, NULL, NULL);
+	SysFreeString(s);
 }
 
 void main() {
@@ -39,53 +40,36 @@ void main() {
 	res = OleInitialize(NULL);
 	ERR(res, "Couldn't initialize OLE");
 	CLSID JFWClass;
-	IDispatch *jfw = nullptr;
 	res = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
 	ERR(res, "Couldn't get Jaws interface ID");
 	res = CoCreateInstance(JFWClass, NULL, CLSCTX_ALL, __uuidof(IDispatch), (void**)&jfw);
 	ERR(res, "Couldn't create Jaws interface");
-	auto started = DBMaster_Start();
-	if(!started) {
-		printf("Couldn't start DictationBridge-core\n");
-		return;
-	}
-	DBMaster_SetTextInsertedCallback(textCallback);
-	/* Call jaws. IDL is:
+	/* Setup to call jaws. IDL is:
 	HRESULT SayString(
 	[in] BSTR StringToSpeak, 
 	[in, optional, defaultvalue(-1)] VARIANT_BOOL bFlush, 
 	[out, retval] VARIANT_BOOL* vbSuccess);
 	*/
 	LPOLESTR name = L"SayString";
-	DISPID id;
-	DISPPARAMS params;
-	VARIANTARG args[3];
 	args[1].vt = VT_BSTR;
 	args[0].vt = VT_BOOL;
 	args[0].boolVal = 0;
-	args[2].vt = VT_BOOL|VT_BYREF;
-	VARIANT_BOOL ignored;
-	args[2].pboolVal = &ignored;
 	params.rgvarg = args;
 	params.rgdispidNamedArgs = NULL;
 	params.cArgs = 2;
 	params.cNamedArgs = 0;
 	res = jfw->GetIDsOfNames(IID_NULL, &name, 1, LOCALE_SYSTEM_DEFAULT, &id);
 	ERR(res, "Couldn't get SayString");
-	while(1) {
-		BSTR s;
-		{
-			std::lock_guard<std::mutex> g(queue_m);
-			if(queue.empty()) continue;
-			s = queue.front();
-			queue.pop_front();
-		}
-		printf("Saying text.\n");
-		args[1].bstrVal = s;
-		res = jfw->Invoke(id, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &params, NULL, NULL, NULL);
-		ERR(res, "Couldn't invoke");
-		SysFreeString(s);
-		std::this_thread::sleep_for(std::chrono::milliseconds(25));
+	auto started = DBMaster_Start();
+	if(!started) {
+		printf("Couldn't start DictationBridge-core\n");
+		return;
+	}
+	DBMaster_SetTextInsertedCallback(textCallback);
+	MSG msg;
+	while(GetMessage(&msg, NULL, NULL, NULL) > 0) {
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
 	}
 	DBMaster_Stop();
 	OleUninitialize();
