@@ -7,10 +7,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <deque>
-#include <mutex>
-#include <thread>
-#include <chrono>
+#include <stdlib.h>
 #include "dictationbridge-core/master/master.h"
 
 #pragma comment(lib, "ole32.lib")
@@ -19,7 +16,7 @@
 if(x != S_OK) {\
 printf(msg "\n");\
 printf("%x\n", res);\
-return;\
+exit(1);\
 }\
 } while(0)
 
@@ -28,19 +25,9 @@ DISPPARAMS params;
 VARIANTARG args[2];
 IDispatch *jfw = nullptr;
 
-void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
-	auto s = SysAllocString(text);
-	args[1].bstrVal = s;
-	jfw->Invoke(id, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &params, NULL, NULL, NULL);
-	SysFreeString(s);
-}
-
-void main() {
-	HRESULT res;
-	res = OleInitialize(NULL);
-	ERR(res, "Couldn't initialize OLE");
+void initSpeak() {
 	CLSID JFWClass;
-	res = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
+	auto res = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
 	ERR(res, "Couldn't get Jaws interface ID");
 	res = CoCreateInstance(JFWClass, NULL, CLSCTX_ALL, __uuidof(IDispatch), (void**)&jfw);
 	ERR(res, "Couldn't create Jaws interface");
@@ -60,6 +47,24 @@ void main() {
 	params.cNamedArgs = 0;
 	res = jfw->GetIDsOfNames(IID_NULL, &name, 1, LOCALE_SYSTEM_DEFAULT, &id);
 	ERR(res, "Couldn't get SayString");
+}
+
+void speak(wchar_t const * text) {
+	auto s = SysAllocString(text);
+	args[1].bstrVal = s;
+	jfw->Invoke(id, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &params, NULL, NULL, NULL);
+	SysFreeString(s);
+}
+
+void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
+	speak(text);
+}
+
+void main() {
+	HRESULT res;
+	res = OleInitialize(NULL);
+	ERR(res, "Couldn't initialize OLE");
+	initSpeak();
 	auto started = DBMaster_Start();
 	if(!started) {
 		printf("Couldn't start DictationBridge-core\n");
