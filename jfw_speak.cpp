@@ -60,6 +60,11 @@ void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
 	speak(text);
 }
 
+void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
+	//todo: implement.
+	printf("Got name change\n");
+}
+
 void main() {
 	HRESULT res;
 	res = OleInitialize(NULL);
@@ -71,6 +76,9 @@ void main() {
 		return;
 	}
 	DBMaster_SetTextInsertedCallback(textCallback);
+	if(SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, NULL, nameChanged, 0, 0, WINEVENT_OUTOFCONTEXT) == 0) {
+		ERROR("Couldn't register to receive events.");
+	}
 	MSG msg;
 	while(GetMessage(&msg, NULL, NULL, NULL) > 0) {
 		TranslateMessage(&msg);
