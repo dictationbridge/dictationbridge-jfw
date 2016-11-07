@@ -1,5 +1,6 @@
 env = Environment(HOST_ARCH = 'x86')
 
+env.Append(CXXFLAGS=['/EHsc'])
 
 dbCore = SConscript(['dictationbridge-core/SConstruct'])
 dbCoreFiles = dbCore[0]
