@@ -1,3 +1,4 @@
+#define UNICODE
 #include <windows.h>
 #include <ole2.h>
 #include <oaidl.h>
@@ -11,6 +12,8 @@
 #include "dictationbridge-core/master/master.h"
 
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "oleacc.lib")
+
 
 #define ERR(x, msg) do { \
 if(x != S_OK) {\
@@ -21,10 +24,11 @@ exit(1);\
 } while(0)
 
 std::string wideToString(wchar_t* text, unsigned int length) {
-	auto tmp = new char[length*2];
+	auto tmp = new char[length*2+1];
 	auto resultingLen = WideCharToMultiByte(CP_UTF8, NULL, text,
 		length, tmp, length*2,
 		NULL, NULL);
+	tmp[resultingLen] = '\0';
 	std::string ret(tmp);
 	delete[] tmp;
 	return ret;
@@ -79,8 +83,60 @@ void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
 	speak(text);
 }
 
+//These are string constants for the microphone status, as well as the status itself:
+//The pointer below is set to the last one we saw.
+const char* MICROPHONE_OFF = "Dragon's microphone is off;";
+const char* MICROPHONE_ON = "Normal mode: You can dictate and use voice";
+const char* MICROPHONE_SLEEPING = "The microphone is asleep;";
+
+const char* microphoneState = nullptr;
+
+void announceMicrophoneState(const char* state) {
+	if(state == MICROPHONE_ON) speak(L"Microphone on.");
+	else if(state == MICROPHONE_OFF) speak(L"Microphone off.");
+	else if(state == MICROPHONE_SLEEPING) speak(L"Microphone sleeping.");
+	else speak(L"Microphone in unknown state.");
+}
+
+wchar_t processNameBuffer[1024] = {0};
+
 void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
-	//todo: implement.
+	//First, is it coming from natspeak.exe?
+	DWORD procId;
+	GetWindowThreadProcessId(hwnd, &procId);
+	auto procHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, procId);
+	//We can't recover from this failing, so abort.
+	if(procHandle == NULL) return;
+	DWORD len = 1024;
+	auto res = QueryFullProcessImageName(procHandle, 0, processNameBuffer, &len);
+	CloseHandle(procHandle);
+	if(res == 0) return;
+	auto processName = wideToString(processNameBuffer, (unsigned int) len);
+	if(processName.find("dragonbar.exe") == std::string::npos
+		&& processName.find("natspeak.exe") == std::string::npos) return;
+	//Attempt to get the new text.
+	IAccessible* acc = nullptr;
+	VARIANT child;
+	HRESULT hres = AccessibleObjectFromEvent(hwnd, idObject, idChild, &acc, &child);
+	if(hres != S_OK || acc == nullptr) return;
+	BSTR nameBSTR;
+	hres = acc->get_accName(child, &nameBSTR);
+	acc->Release();
+	if(hres != S_OK) return;
+	auto name = BSTRToString(nameBSTR);
+	SysFreeString(nameBSTR);
+	const char* possibles[] = {MICROPHONE_ON, MICROPHONE_OFF, MICROPHONE_SLEEPING};
+	const char* newState = microphoneState;
+	for(int i = 0; i < 3; i++) {
+		if(name.find(possibles[i]) != std::string::npos) {
+			newState = possibles[i];
+			break;
+		}
+	}
+	if(newState != microphoneState) {
+		announceMicrophoneState(newState);
+		microphoneState = newState;
+	}
 }
 
 void main() {
