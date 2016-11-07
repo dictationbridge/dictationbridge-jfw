@@ -1,0 +1,6 @@
+*.obj
+*.exe
+*.pyc
+*.lib
+*.dll
+,.sconsign.dblite
