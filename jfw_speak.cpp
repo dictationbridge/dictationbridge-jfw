@@ -20,6 +20,21 @@ exit(1);\
 }\
 } while(0)
 
+std::string wideToString(wchar_t* text, unsigned int length) {
+	auto tmp = new char[length*2];
+	auto resultingLen = WideCharToMultiByte(CP_UTF8, NULL, text,
+		length, tmp, length*2,
+		NULL, NULL);
+	std::string ret(tmp);
+	delete[] tmp;
+	return ret;
+}
+
+std::string BSTRToString(BSTR text) {
+	unsigned int len = SysStringLen(text);
+	return wideToString(text, len);
+}
+
 DISPID id;
 DISPPARAMS params;
 VARIANTARG args[2];
@@ -53,6 +68,10 @@ void speak(wchar_t const * text) {
 	auto s = SysAllocString(text);
 	args[1].bstrVal = s;
 	jfw->Invoke(id, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &params, NULL, NULL, NULL);
+	//Temporary, for debugging.
+	auto tmp = BSTRToString(s);
+	printf(&tmp[0]);
+	printf("\n");
 	SysFreeString(s);
 }
 
@@ -62,7 +81,6 @@ void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
 
 void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
 	//todo: implement.
-	printf("Got name change\n");
 }
 
 void main() {
