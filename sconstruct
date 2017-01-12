@@ -6,7 +6,8 @@ dbCore = SConscript(['dictationbridge-core/SConstruct'])
 dbCoreFiles = dbCore[0]
 jfw_speak = env.Program('jfw_speak', 'jfw_speak.cpp',
 	LIBS = 'DictationBridgeMaster32',
-	LIBPATH = 'dictationbridge-core/build/x86/master'
+	LIBPATH = 'dictationbridge-core/build/x86/master',
+    LINKFLAGS = "/SUBSYSTEM:WINDOWS",
 )
 
 

@@ -139,7 +139,10 @@ void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, L
 	}
 }
 
-void main() {
+int CALLBACK WinMain(_In_ HINSTANCE hInstance,
+	_In_ HINSTANCE hPrevInstance,
+	_In_ LPSTR lpCmdLine,
+	_In_ int nCmdShow) {
 	HRESULT res;
 	res = OleInitialize(NULL);
 	ERR(res, "Couldn't initialize OLE");
@@ -147,11 +150,11 @@ void main() {
 	auto started = DBMaster_Start();
 	if(!started) {
 		printf("Couldn't start DictationBridge-core\n");
-		return;
+		return 1;
 	}
 	DBMaster_SetTextInsertedCallback(textCallback);
 	if(SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, NULL, nameChanged, 0, 0, WINEVENT_OUTOFCONTEXT) == 0) {
-		ERROR("Couldn't register to receive events.");
+		ERR("Couldn't register to receive events.");
 	}
 	MSG msg;
 	while(GetMessage(&msg, NULL, NULL, NULL) > 0) {
@@ -160,4 +163,5 @@ void main() {
 	}
 	DBMaster_Stop();
 	OleUninitialize();
+	return 0;
 }
