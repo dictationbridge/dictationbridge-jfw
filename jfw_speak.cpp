@@ -95,15 +95,6 @@ void WINAPI textDeletedCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
 	delete[] tmp;
 }
 
-void WINAPI commandCallback(LPCSTR command) {
-	int len = strlen(command);
-	wchar_t* tmp = new wchar_t[len+1];
-	for(int i = 0; i < len; i++) tmp[i] = command[i];
-	tmp[len] = 0;
-	speak(tmp);
-	delete[] tmp;
-}
-
 //These are string constants for the microphone status, as well as the status itself:
 //The pointer below is set to the last one we saw.
 const char* MICROPHONE_OFF = "Dragon's microphone is off;";
@@ -175,7 +166,6 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	}
 	DBMaster_SetTextInsertedCallback(textCallback);
 	DBMaster_SetTextDeletedCallback(textDeletedCallback);
-	DBMaster_SetCommandCallback(commandCallback);
 	if(SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, NULL, nameChanged, 0, 0, WINEVENT_OUTOFCONTEXT) == 0) {
 		printf("Couldn't register to receive events\n");
 		return 1;
