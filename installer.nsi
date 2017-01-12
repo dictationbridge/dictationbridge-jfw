@@ -89,3 +89,14 @@ ${EndSwitch}
 ;Strange though it seems, the language file includes must follow the invocation of JAWSScriptInstaller.
   ;!include "uninstlog_enu.nsh"
   ;!include "uninstlog_esn.nsh"
+
+  section "-instCore"
+  push $OUTDIR
+  strcpy $OUTDIR "$PROGRAMFILES32\Dictation Bridge"
+  file /r "dist\*"
+  pop $OUTDIR
+  SectionEnd
+  
+  section "un.Core"
+  rmdir /r "$PROGRAMFILES32\Dictation Bridge"
+  SectionEnd
