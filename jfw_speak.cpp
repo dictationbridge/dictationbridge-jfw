@@ -79,8 +79,29 @@ void speak(wchar_t const * text) {
 	SysFreeString(s);
 }
 
-void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
-	speak(text);
+void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR textUnprocessed) {
+	//We need to replace \r with nothing.
+	int len = wcslen(textUnprocessed);
+	wchar_t* text = new wchar_t[len+1];
+	int copied = 0;
+	for(int i = 0; i < len; i++) {
+		if(textUnprocessed[i] != L'\r') {
+			text[copied] = textUnprocessed[i];
+			copied += 1;
+		}
+	}
+	text[copied+1] = 0;
+	if(wcscmp(text, L"\n\n") == 0
+		|| wcscmp(text, L"") == 0 //new paragraph in word.
+	) {
+		speak(L"New paragraph.");
+	}
+	else if(wcscmp(text, L"\n")  == 0) {
+		speak(L"New line.");
+	}
+	else {
+		speak(text);
+	}
 }
 
 void WINAPI textDeletedCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
