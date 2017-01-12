@@ -23,7 +23,7 @@ exit(1);\
 }\
 } while(0)
 
-std::string wideToString(wchar_t* text, unsigned int length) {
+std::string wideToString(wchar_t const * text, unsigned int length) {
 	auto tmp = new char[length*2+1];
 	auto resultingLen = WideCharToMultiByte(CP_UTF8, NULL, text,
 		length, tmp, length*2,
@@ -81,6 +81,27 @@ void speak(wchar_t const * text) {
 
 void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
 	speak(text);
+}
+
+void WINAPI textDeletedCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
+	int len = wcslen(text);
+	int neededLen = len + strlen("Deleted ");
+	wchar_t* tmp = new wchar_t[neededLen+1];
+	wcscpy(tmp, L"Deleted ");
+	int offset = strlen("Deleted ");
+	for(int i = 0; i < len; i++) tmp[i+offset] = text[i];
+	tmp[neededLen] = 0;
+	speak(tmp);
+	delete[] tmp;
+}
+
+void WINAPI commandCallback(LPCSTR command) {
+	int len = strlen(command);
+	wchar_t* tmp = new wchar_t[len+1];
+	for(int i = 0; i < len; i++) tmp[i] = command[i];
+	tmp[len] = 0;
+	speak(tmp);
+	delete[] tmp;
 }
 
 //These are string constants for the microphone status, as well as the status itself:
@@ -153,8 +174,11 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 		return 1;
 	}
 	DBMaster_SetTextInsertedCallback(textCallback);
+	DBMaster_SetTextDeletedCallback(textDeletedCallback);
+	DBMaster_SetCommandCallback(commandCallback);
 	if(SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, NULL, nameChanged, 0, 0, WINEVENT_OUTOFCONTEXT) == 0) {
-		ERR("Couldn't register to receive events.");
+		printf("Couldn't register to receive events\n");
+		return 1;
 	}
 	MSG msg;
 	while(GetMessage(&msg, NULL, NULL, NULL) > 0) {
