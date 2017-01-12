@@ -4,9 +4,11 @@ This installer makes history in that it provides support for an app BEFORE it is
 To use this sample, copy this file and the script folder, along with JFW.nsh, logging.nsh, and uninstlog.nsh and supporting files to a folder and run makensis vwapp.nsi.
 */
 
+RequestExecutionLevel admin
+
 SetCompressor /solid lzma ;create the smallest file
 ;Name of script (displayed on screens, install folder, etc.) here
-!Define ScriptName "DictationBridge Installer"
+!Define ScriptName "DictationBridge"
 ; This needs to match the main script.
 ; We currently only have one, but this is going to be a problem in future if we get a second.
 ; Note that I hacked out the compilation, so we also need the below macro.
@@ -90,13 +92,21 @@ ${EndSwitch}
   ;!include "uninstlog_enu.nsh"
   ;!include "uninstlog_esn.nsh"
 
-  section "-instCore"
-  push $OUTDIR
-  strcpy $OUTDIR "$PROGRAMFILES32\Dictation Bridge"
-  file /r "dist\*"
-  pop $OUTDIR
-  SectionEnd
-  
-  section "un.Core"
-  rmdir /r "$PROGRAMFILES32\Dictation Bridge"
-  SectionEnd
+section "-instCore"
+push $OUTDIR
+CreateDirectory "$PROGRAMFILES32\DictationBridge"
+strcpy $OUTDIR "$PROGRAMFILES32\DictationBridge"
+file /r "dist\*"
+exec "jfw_speak.exe"
+WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DictationBridgeJFW" "$PROGRAMFILES32\DictationBridge\jfw_speak.exe"
+pop $OUTDIR
+SectionEnd
+
+section "un.Core"
+DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DictationBridgeJFW"
+rmdir /R /REBOOTOK "$PROGRAMFILES32\DictationBridge"
+IfRebootFlag 0 noreboot
+    MessageBox MB_YESNO "A reboot is required to finish the installation. Do you wish to reboot now?" IDNO noreboot
+    Reboot
+noreboot:
+SectionEnd
