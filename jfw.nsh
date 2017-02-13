@@ -1341,27 +1341,7 @@ function JAWSMuInstallMode
 FunctionEnd ;JAWSMuInstallMode
 
 !macro JAWSDirectoryPage
-PageEx Directory
-PageCallbacks DirPagePre "" DirPageLeave
-DirText "$(DirPageText)"
-PageExEnd
-
-function DirPagePre
-${Unless} ${SectionIsSelected} $JAWSSecUninstaller
-  Abort ; skip page if it is not full installation.
-${EndUnless}
-functionend
-
-function DirPageLeave
-IfFileExists $INSTDIR +1 next
-  ${GetFileAttributes} $INSTDIR DIRECTORY $0
-  intcmp $0 1 +1 +3
-    MessageBox MB_YESNO "$(InstallFolderExists)" IDYES next
-    abort
-  MessageBox MB_OK "$(InstDirNotFolder)" /SD IDOK
-  abort
-next:
-FunctionEnd
+; Empty because we hacked out the dierctory page.
 !macroend ;JAWSDirectoryPage
 
 !macro JAWSInstConfirmPage
