@@ -72,10 +72,6 @@ void speak(wchar_t const * text) {
 	auto s = SysAllocString(text);
 	args[1].bstrVal = s;
 	jfw->Invoke(id, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &params, NULL, NULL, NULL);
-	//Temporary, for debugging.
-	auto tmp = BSTRToString(s);
-	printf(&tmp[0]);
-	printf("\n");
 	SysFreeString(s);
 }
 
