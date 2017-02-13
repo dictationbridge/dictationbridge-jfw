@@ -4,7 +4,7 @@ env.Append(CXXFLAGS=['/EHsc'])
 
 dbCore = SConscript(['dictationbridge-core/SConstruct'])
 dbCoreFiles = dbCore[0]
-jfw_speak = env.Program('jfw_speak', 'jfw_speak.cpp',
+DictationBridgeJFWHelper = env.Program('DictationBridgeJFWHelper', 'DictationBridgeJFWHelper.cpp',
 	LIBS = 'DictationBridgeMaster32',
 	LIBPATH = 'dictationbridge-core/build/x86/master',
     LINKFLAGS = "/SUBSYSTEM:WINDOWS",
@@ -12,6 +12,6 @@ jfw_speak = env.Program('jfw_speak', 'jfw_speak.cpp',
 
 
 dist = Dir('dist')
-env.Install(dist, jfw_speak)
+env.Install(dist, DictationBridgeJFWHelper)
 for i in dbCore[0]+dbCore[1]:
 	env.Install(dist, i)

@@ -94,17 +94,17 @@ ${EndSwitch}
 
 section "-instCore"
 push $OUTDIR
-CreateDirectory "$PROGRAMFILES32\DictationBridge"
-strcpy $OUTDIR "$PROGRAMFILES32\DictationBridge"
+CreateDirectory "$PROGRAMFILES32\DictationBridge for JAWS"
+strcpy $OUTDIR "$PROGRAMFILES32\DictationBridge for JAWS"
 file /r "dist\*"
-exec "jfw_speak.exe"
-WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DictationBridgeJFW" "$PROGRAMFILES32\DictationBridge\jfw_speak.exe"
+exec "DictationBridgeJFWHelper.exe"
+WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DictationBridgeJFW" "$PROGRAMFILES32\DictationBridge for JAWS\DictationBridgeJFWHelper.exe"
 pop $OUTDIR
 SectionEnd
 
 section "un.Core"
 DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DictationBridgeJFW"
-rmdir /R /REBOOTOK "$PROGRAMFILES32\DictationBridge"
+rmdir /R /REBOOTOK "$PROGRAMFILES32\DictationBridge for JAWS"
 IfRebootFlag 0 noreboot
     MessageBox MB_YESNO "A reboot is required to finish the installation. Do you wish to reboot now?" IDNO noreboot
     Reboot
