@@ -17,8 +17,7 @@
 
 #define ERR(x, msg) do { \
 if(x != S_OK) {\
-printf(msg "\n");\
-printf("%x\n", res);\
+MessageBox(NULL, msg L"\n", NULL, NULL);\
 exit(1);\
 }\
 } while(0)
@@ -47,9 +46,9 @@ IDispatch *jfw = nullptr;
 void initSpeak() {
 	CLSID JFWClass;
 	auto res = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
-	ERR(res, "Couldn't get Jaws interface ID");
+	ERR(res, L"Couldn't get Jaws interface ID");
 	res = CoCreateInstance(JFWClass, NULL, CLSCTX_ALL, __uuidof(IDispatch), (void**)&jfw);
-	ERR(res, "Couldn't create Jaws interface");
+	ERR(res, L"Couldn't create Jaws interface");
 	/* Setup to call jaws. IDL is:
 	HRESULT SayString(
 	[in] BSTR StringToSpeak, 
@@ -65,7 +64,7 @@ void initSpeak() {
 	params.cArgs = 2;
 	params.cNamedArgs = 0;
 	res = jfw->GetIDsOfNames(IID_NULL, &name, 1, LOCALE_SYSTEM_DEFAULT, &id);
-	ERR(res, "Couldn't get SayString");
+	ERR(res, L"Couldn't get SayString");
 }
 
 void speak(wchar_t const * text) {
@@ -168,13 +167,40 @@ void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, L
 	}
 }
 
+int keepRunning = 1; // Goes to 0 on WM_CLOSE.
+LPCTSTR msgWindowClassName = L"DictationBridgeJFWHelper";
+
+LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In_ LPARAM lparam) {
+	if(msg == WM_CLOSE) keepRunning = 0;
+	return DefWindowProc(hwnd, msg, wparam, lparam);
+}
+
 int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	_In_ HINSTANCE hPrevInstance,
 	_In_ LPSTR lpCmdLine,
 	_In_ int nCmdShow) {
+	// First, is a core running?
+	if(FindWindow(msgWindowClassName, NULL)) {
+		MessageBox(NULL, L"Core already running.", NULL, NULL);
+		return 0;
+	}
+	WNDCLASS windowClass = {0};
+	windowClass.lpfnWndProc = exitProc;
+	windowClass.hInstance = hInstance;
+	windowClass.lpszClassName = msgWindowClassName;
+	auto msgWindowClass = RegisterClass(&windowClass);
+	if(msgWindowClass == 0) {
+		MessageBox(NULL, L"Failed to register window class.", NULL, NULL);
+		return 0;
+	}
+	auto msgWindowHandle = CreateWindow(msgWindowClassName, NULL, NULL, NULL, NULL, NULL, NULL, HWND_MESSAGE, NULL, GetModuleHandle(NULL), NULL);
+	if(msgWindowHandle == 0) {
+		MessageBox(NULL, L"Failed to create message-only window.", NULL, NULL);
+		return 0;
+	}
 	HRESULT res;
 	res = OleInitialize(NULL);
-	ERR(res, "Couldn't initialize OLE");
+	ERR(res, L"Couldn't initialize OLE");
 	initSpeak();
 	auto started = DBMaster_Start();
 	if(!started) {
@@ -191,8 +217,10 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	while(GetMessage(&msg, NULL, NULL, NULL) > 0) {
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
+		if(keepRunning == 0) break;
 	}
 	DBMaster_Stop();
 	OleUninitialize();
+	DestroyWindow(msgWindowHandle);
 	return 0;
 }

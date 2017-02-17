@@ -3,6 +3,7 @@ This installer makes history in that it provides support for an app BEFORE it is
 
 To use this sample, copy this file and the script folder, along with JFW.nsh, logging.nsh, and uninstlog.nsh and supporting files to a folder and run makensis vwapp.nsi.
 */
+!include "WinMessages.nsh"
 
 RequestExecutionLevel admin
 
@@ -110,6 +111,13 @@ pop $OUTDIR
 SectionEnd
 
 section "un.Core"
+FindWindow $R0 "DictationBridgeJFWHelper"
+IntCmp $0 0 Core NoCore Core
+Core:
+SendMessage $R0 WM_CLOSE 0 0
+; Give the core time to exit. If it still exists after a second, just reboot because it's crashed.
+sleep 1000
+NoCore:
 DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DictationBridgeJFW"
 rmdir /R /REBOOTOK "$INSTDIR"
 IfRebootFlag 0 noreboot
