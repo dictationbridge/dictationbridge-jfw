@@ -733,23 +733,24 @@ pop $0
 
 !macro JAWSComponentsPage
 ;The order of the insstype commands is important.
-insttype "$(InstTypeFull)"
-insttype "$(InstTypeJustScripts)"
+; First is 0, so hacking these out should just be commenting.
+;insttype "$(InstTypeFull)"
+;insttype "$(InstTypeJustScripts)"
 ;insttype /NOCUSTOM
-insttype /COMPONENTSONLYONCUSTOM
+;insttype /COMPONENTSONLYONCUSTOM
 !define INST_FULL 1
 !define INST_JUSTSCRIPTS 2
 ;!define INST_CUSTOM 33
 !define INST_CUSTOM 32
 
 ; Displays 3 lines of about 98 chars.
-!define MUI_COMPONENTSPAGE_TEXT_TOP "$(InstTypeFullMsg)"
+;!define MUI_COMPONENTSPAGE_TEXT_TOP "$(InstTypeFullMsg)"
 ;!define MUI_COMPONENTSPAGE_TEXT_COMPLIST text
 ;!define MUI_COMPONENTSPAGE_TEXT_INSTTYPE text
 ;!define MUI_COMPONENTSPAGE_TEXT_DESCRIPTION_TITLE text
 ;!define MUI_COMPONENTSPAGE_TEXT_DESCRIPTION_INFO text ;Text to display inside the description box when no section is selected.
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE ComponentsPageLeave
-!insertmacro mui_page_Components
+;!define MUI_PAGE_CUSTOMFUNCTION_LEAVE ComponentsPageLeave
+;!insertmacro mui_page_Components
 
 function ComponentsPageLeave
 getcurinsttype $0
