@@ -1342,7 +1342,7 @@ function JAWSMuInstallMode
 FunctionEnd ;JAWSMuInstallMode
 
 !macro JAWSDirectoryPage
-; Empty because we hacked out the dierctory page.
+; Empty because we hacked out the directory page.
 !macroend ;JAWSDirectoryPage
 
 !macro JAWSInstConfirmPage
@@ -1355,6 +1355,10 @@ ${StrRep}
 function PageInstConfirmPre
 !insertmacro MUI_HEADER_TEXT "$(InstConfirmHdr)" "$(InstConfirmText)"
 ${StrRep} $1 "$SELECTEDJAWSVERSIONS" "|" ", "
+
+; multiuser.nsh sets $INSTDIR, and we absolutely need to change it afterwords.
+; We do it here because anywhere else is going to be more annoying.
+strcpy $INSTDIR "$PROGRAMFILES32\DictationBridge for JAWS"
 
 ;${StoreDetailPrint} messages should not be translated.
 ${StoreDetailPrint} "Installation settings:"
@@ -1926,7 +1930,8 @@ FunctionEnd ; InstFilesLeave
 !include "JFW_lang_enu.nsh" ;English language strings for this file
 !include "JFW_lang_esn.nsh" ;Spanish language strings for this file
 
-Function .OnInit
+; Used to be .onInit, renamed and called from ours.
+Function OldOnInit
   ${StoreDetailPrintInit}
   !insertmacro MULTIUSER_INIT
   StrCpy $JAWSORIGINSTALLMODE $MultiUser.InstallMode

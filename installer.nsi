@@ -92,19 +92,26 @@ ${EndSwitch}
   ;!include "uninstlog_enu.nsh"
   ;!include "uninstlog_esn.nsh"
 
+  Function .onInit
+  ; The package we are using provides a .onInit as well, so I renamed it and we call through here.
+  ; This would be JawsOnInit, but that name is already used.
+  call OldOnInit
+  strcpy $INSTDIR "$PROGRAMFILES32\DictationBridge for JAWS"
+  FunctionEnd
+  
 section "-instCore"
 push $OUTDIR
-CreateDirectory "$PROGRAMFILES32\DictationBridge for JAWS"
-strcpy $OUTDIR "$PROGRAMFILES32\DictationBridge for JAWS"
+CreateDirectory "$INSTDIR"
+strcpy $OUTDIR "$INSTDIR"
 file /r "dist\*"
 exec "DictationBridgeJFWHelper.exe"
-WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DictationBridgeJFW" "$PROGRAMFILES32\DictationBridge for JAWS\DictationBridgeJFWHelper.exe"
+WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DictationBridgeJFW" "$INSTDIR\DictationBridgeJFWHelper.exe"
 pop $OUTDIR
 SectionEnd
 
 section "un.Core"
 DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "DictationBridgeJFW"
-rmdir /R /REBOOTOK "$PROGRAMFILES32\DictationBridge for JAWS"
+rmdir /R /REBOOTOK "$INSTDIR"
 IfRebootFlag 0 noreboot
     MessageBox MB_YESNO "A reboot is required to finish the installation. Do you wish to reboot now?" IDNO noreboot
     Reboot
