@@ -85,7 +85,7 @@ void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR textUnprocessed
 			copied += 1;
 		}
 	}
-	text[copied+1] = 0;
+	text[copied] = 0;
 	if(wcscmp(text, L"\n\n") == 0
 		|| wcscmp(text, L"") == 0 //new paragraph in word.
 	) {
