@@ -97,6 +97,7 @@ void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR textUnprocessed
 	else {
 		speak(text);
 	}
+	delete[] text;
 }
 
 void WINAPI textDeletedCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
