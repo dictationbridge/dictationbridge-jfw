@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <stdlib.h>
+#include "FSAPI.h"
 #include "dictationbridge-core/master/master.h"
 
 #pragma comment(lib, "ole32.lib")
@@ -38,39 +39,21 @@ std::string BSTRToString(BSTR text) {
 	return wideToString(text, len);
 }
 
-DISPID id;
-DISPPARAMS params;
-VARIANTARG args[2];
-IDispatch *jfw = nullptr;
+IJawsApi *jfw =nullptr;
 
 void initSpeak() {
 	CLSID JFWClass;
 	auto res = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
 	ERR(res, L"Couldn't get Jaws interface ID");
-	res = CoCreateInstance(JFWClass, NULL, CLSCTX_ALL, __uuidof(IDispatch), (void**)&jfw);
+	res = CoCreateInstance(JFWClass, NULL, CLSCTX_ALL, __uuidof(IJawsApi), (void**)&jfw);
 	ERR(res, L"Couldn't create Jaws interface");
-	/* Setup to call jaws. IDL is:
-	HRESULT SayString(
-	[in] BSTR StringToSpeak, 
-	[in, optional, defaultvalue(-1)] VARIANT_BOOL bFlush, 
-	[out, retval] VARIANT_BOOL* vbSuccess);
-	*/
-	LPOLESTR name = L"SayString";
-	args[1].vt = VT_BSTR;
-	args[0].vt = VT_BOOL;
-	args[0].boolVal = 0;
-	params.rgvarg = args;
-	params.rgdispidNamedArgs = NULL;
-	params.cArgs = 2;
-	params.cNamedArgs = 0;
-	res = jfw->GetIDsOfNames(IID_NULL, &name, 1, LOCALE_SYSTEM_DEFAULT, &id);
-	ERR(res, L"Couldn't get SayString");
 }
 
 void speak(wchar_t const * text) {
 	auto s = SysAllocString(text);
-	args[1].bstrVal = s;
-	jfw->Invoke(id, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_METHOD, &params, NULL, NULL, NULL);
+VARIANT_BOOL silence =VARIANT_FALSE;		
+VARIANT_BOOL *jfwSuccess =VARIANT_FALSE;
+	jfw->SayString(s, silence , jfwSuccess);
 	SysFreeString(s);
 }
 
@@ -221,6 +204,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 		if(keepRunning == 0) break;
 	}
 	DBMaster_Stop();
+jfw->Release();
 	OleUninitialize();
 	DestroyWindow(msgWindowHandle);
 	return 0;
