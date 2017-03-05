@@ -1,3 +1,4 @@
+*.tlb
 *.obj
 *.exe
 *.pyc
