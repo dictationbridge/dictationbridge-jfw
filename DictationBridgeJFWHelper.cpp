@@ -39,13 +39,13 @@ std::string BSTRToString(BSTR text) {
 	return wideToString(text, len);
 }
 
-IJawsApi *jfw =nullptr;
+CComPtr<IJawsApi> pJfw =nullptr;
 
 void initSpeak() {
 	CLSID JFWClass;
 	auto res = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
 	ERR(res, L"Couldn't get Jaws interface ID");
-	res = CoCreateInstance(JFWClass, NULL, CLSCTX_ALL, __uuidof(IJawsApi), (void**)&jfw);
+res =pJfw.CoCreateInstance(JFWClass);
 	ERR(res, L"Couldn't create Jaws interface");
 }
 
@@ -53,7 +53,7 @@ void speak(wchar_t const * text) {
 	auto s = SysAllocString(text);
 VARIANT_BOOL silence =VARIANT_FALSE;		
 VARIANT_BOOL *jfwSuccess =VARIANT_FALSE;
-	jfw->SayString(s, silence , jfwSuccess);
+	pJfw->SayString(s, silence , jfwSuccess);
 	SysFreeString(s);
 }
 
@@ -204,7 +204,6 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 		if(keepRunning == 0) break;
 	}
 	DBMaster_Stop();
-jfw->Release();
 	OleUninitialize();
 	DestroyWindow(msgWindowHandle);
 	return 0;
