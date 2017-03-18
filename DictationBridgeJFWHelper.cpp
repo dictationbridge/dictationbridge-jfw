@@ -5,6 +5,7 @@
 #include <objbase.h>
 #include <AtlBase.h>
 #include <AtlConv.h>
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -12,6 +13,7 @@
 #include <stdlib.h>
 #include "FSAPI.h"
 #include "dictationbridge-core/master/master.h"
+#include <cmath>
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "oleacc.lib")
@@ -60,28 +62,22 @@ VARIANT_BOOL *jfwSuccess =VARIANT_FALSE;
 
 void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR textUnprocessed) {
 	//We need to replace \r with nothing.
-	int len = wcslen(textUnprocessed);
-	wchar_t* text = new wchar_t[len+1];
-	int copied = 0;
-	for(int i = 0; i < len; i++) {
-		if(textUnprocessed[i] != L'\r') {
-			text[copied] = textUnprocessed[i];
-			copied += 1;
-		}
-	}
-	text[copied] = 0;
-	if(wcscmp(text, L"\n\n") == 0
-		|| wcscmp(text, L"") == 0 //new paragraph in word.
+std::wstring text =textUnprocessed;
+text.erase(std::remove_if(begin(text), end(text), [] (wchar_t checkingCharacter) {
+		return checkingCharacter == '\r';
+	}), end(text));
+
+	if(text.compare(L"\n\n") ==0 
+|| text.compare(L"") ==0 //new paragraph in word.
 	) {
 		speak(L"New paragraph.");
 	}
-	else if(wcscmp(text, L"\n")  == 0) {
+	else if(text.compare(L"\n") ==0) {
 		speak(L"New line.");
 	}
 	else {
-		speak(text);
-	}
-	delete[] text;
+speak(text.c_str());
+}
 }
 
 void WINAPI textDeletedCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
