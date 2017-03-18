@@ -6,6 +6,7 @@
 #include <AtlBase.h>
 #include <AtlConv.h>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <stdlib.h>
@@ -84,15 +85,10 @@ void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR textUnprocessed
 }
 
 void WINAPI textDeletedCallback(HWND hwnd, DWORD startPosition, LPCWSTR text) {
-	int len = wcslen(text);
-	int neededLen = len + strlen("Deleted ");
-	wchar_t* tmp = new wchar_t[neededLen+1];
-	wcscpy(tmp, L"Deleted ");
-	int offset = strlen("Deleted ");
-	for(int i = 0; i < len; i++) tmp[i+offset] = text[i];
-	tmp[neededLen] = 0;
-	speak(tmp);
-	delete[] tmp;
+std::wstringstream deletedText;
+deletedText << "Deleted ";
+deletedText << text;
+	speak(deletedText.str().c_str());
 }
 
 //These are string constants for the microphone status, as well as the status itself:
