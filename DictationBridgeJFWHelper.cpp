@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include "FSAPI.h"
 #include "dictationbridge-core/master/master.h"
-#include <cmath>
+#include "combool.h"
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "oleacc.lib")
@@ -52,12 +52,11 @@ res =pJfw.CoCreateInstance(JFWClass);
 	ERR(res, L"Couldn't create Jaws interface");
 }
 
-void speak(wchar_t const * text) {
-	auto s = SysAllocString(text);
-VARIANT_BOOL silence =VARIANT_FALSE;		
-VARIANT_BOOL *jfwSuccess =VARIANT_FALSE;
-	pJfw->SayString(s, silence , jfwSuccess);
-	SysFreeString(s);
+void speak(std::wstring text) {
+CComBSTR bS =CComBSTR(text.size(), text.data());
+CComBool silence =false;
+CComBool bResult;
+	pJfw->SayString(bS, silence, &bResult);
 }
 
 void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR textUnprocessed) {
