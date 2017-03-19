@@ -1,16 +1,10 @@
 #define UNICODE
 #include <windows.h>
 #include <ole2.h>
-#include <oaidl.h>
-#include <objbase.h>
 #include <AtlBase.h>
-#include <AtlConv.h>
 #include <algorithm>
-#include <iostream>
 #include <sstream>
 #include <string>
-#include <vector>
-#include <stdlib.h>
 #include "FSAPI.h"
 #include "dictationbridge-core/master/master.h"
 #include "combool.h"
@@ -25,22 +19,6 @@ MessageBox(NULL, msg L"\n", NULL, NULL);\
 exit(1);\
 }\
 } while(0)
-
-std::string wideToString(wchar_t const * text, unsigned int length) {
-	auto tmp = new char[length*2+1];
-	auto resultingLen = WideCharToMultiByte(CP_UTF8, NULL, text,
-		length, tmp, length*2,
-		NULL, NULL);
-	tmp[resultingLen] = '\0';
-	std::string ret(tmp);
-	delete[] tmp;
-	return ret;
-}
-
-std::string BSTRToString(BSTR text) {
-	unsigned int len = SysStringLen(text);
-	return wideToString(text, len);
-}
 
 CComPtr<IJawsApi> pJfw =nullptr;
 
