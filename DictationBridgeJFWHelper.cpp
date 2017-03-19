@@ -118,16 +118,14 @@ void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, L
 	if(processName.find("dragonbar.exe") == std::string::npos
 		&& processName.find("natspeak.exe") == std::string::npos) return;
 	//Attempt to get the new text.
-	IAccessible* acc = nullptr;
-	VARIANT child;
-	HRESULT hres = AccessibleObjectFromEvent(hwnd, idObject, idChild, &acc, &child);
-	if(hres != S_OK || acc == nullptr) return;
-	BSTR nameBSTR;
-	hres = acc->get_accName(child, &nameBSTR);
-	acc->Release();
+CComPtr<IAccessible> pAcc;
+CComVariant vChild;
+	HRESULT hres = AccessibleObjectFromEvent(hwnd, idObject, idChild, &pAcc, &vChild);
 	if(hres != S_OK) return;
-	auto name = BSTRToString(nameBSTR);
-	SysFreeString(nameBSTR);
+CComBSTR bName;
+	hres = pAcc->get_accName(vChild, &bName);
+	if(hres != S_OK) return;
+	auto name = BSTRToString(bName);
 	const char* possibles[] = {MICROPHONE_ON, MICROPHONE_OFF, MICROPHONE_SLEEPING};
 	const char* newState = microphoneState;
 	for(int i = 0; i < 3; i++) {
