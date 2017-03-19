@@ -88,13 +88,13 @@ deletedText << text;
 
 //These are string constants for the microphone status, as well as the status itself:
 //The pointer below is set to the last one we saw.
-const char* MICROPHONE_OFF = "Dragon's microphone is off;";
-const char* MICROPHONE_ON = "Normal mode: You can dictate and use voice";
-const char* MICROPHONE_SLEEPING = "The microphone is asleep;";
+std::wstring MICROPHONE_OFF = L"Dragon's microphone is off;";
+std::wstring MICROPHONE_ON = L"Normal mode: You can dictate and use voice";
+std::wstring MICROPHONE_SLEEPING = L"The microphone is asleep;";
 
-const char* microphoneState = nullptr;
+std::wstring microphoneState;
 
-void announceMicrophoneState(const char* state) {
+void announceMicrophoneState(const std::wstring state) {
 	if(state == MICROPHONE_ON) speak(L"Microphone on.");
 	else if(state == MICROPHONE_OFF) speak(L"Microphone off.");
 	else if(state == MICROPHONE_SLEEPING) speak(L"Microphone sleeping.");
@@ -114,9 +114,9 @@ void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, L
 	auto res = QueryFullProcessImageName(procHandle, 0, processNameBuffer, &len);
 	CloseHandle(procHandle);
 	if(res == 0) return;
-	auto processName = wideToString(processNameBuffer, (unsigned int) len);
-	if(processName.find("dragonbar.exe") == std::string::npos
-		&& processName.find("natspeak.exe") == std::string::npos) return;
+std::wstring processName =processNameBuffer;
+	if(processName.find(L"dragonbar.exe") == std::string::npos
+		&& processName.find(L"natspeak.exe") == std::string::npos) return;
 	//Attempt to get the new text.
 CComPtr<IAccessible> pAcc;
 CComVariant vChild;
@@ -125,9 +125,9 @@ CComVariant vChild;
 CComBSTR bName;
 	hres = pAcc->get_accName(vChild, &bName);
 	if(hres != S_OK) return;
-	auto name = BSTRToString(bName);
-	const char* possibles[] = {MICROPHONE_ON, MICROPHONE_OFF, MICROPHONE_SLEEPING};
-	const char* newState = microphoneState;
+std::wstring name =bName;
+	const std::wstring possibles[] = {MICROPHONE_ON, MICROPHONE_OFF, MICROPHONE_SLEEPING};
+std::wstring newState = microphoneState;
 	for(int i = 0; i < 3; i++) {
 		if(name.find(possibles[i]) != std::string::npos) {
 			newState = possibles[i];
