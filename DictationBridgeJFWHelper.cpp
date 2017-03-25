@@ -71,6 +71,8 @@ std::wstring MICROPHONE_ON = L"Normal mode: You can dictate and use voice";
 std::wstring MICROPHONE_SLEEPING = L"The microphone is asleep;";
 
 std::wstring microphoneState;
+//This is a constant for the text indicating dragon hasn't understood what a user has dictated.
+const std::wstring DictationWasNotUnderstood =L"<???>";
 
 void announceMicrophoneState(const std::wstring state) {
 	if(state == MICROPHONE_ON) speak(L"Microphone on.");
@@ -104,6 +106,12 @@ CComBSTR bName;
 	hres = pAcc->get_accName(vChild, &bName);
 	if(hres != S_OK) return;
 std::wstring name =bName;
+//check to see whether Dragon understood the user.
+if (name .compare(DictationWasNotUnderstood) ==0)
+{
+speak(L"I do not understand.");
+return;
+}
 	const std::wstring possibles[] = {MICROPHONE_ON, MICROPHONE_OFF, MICROPHONE_SLEEPING};
 std::wstring newState = microphoneState;
 	for(int i = 0; i < 3; i++) {
