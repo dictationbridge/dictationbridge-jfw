@@ -1,19 +1,38 @@
 include "hjglobal.jsh"
 include "hjconst.jsh"
 include "msaaconst.jsh"
+const 
+CSCNoDialog =0,
+CSCCorrectionDialog =1,
+CSCSpellDialog =2
+
 Globals
 int giJustEnteredCorrectionBox, ;used to indicate when we have just entered the correction box as aposed to alt-tabbing away.
 int giDragonLoading,
-int giCorrectionBoxAlreadyActive ;used to indicate if the correction box is already active when autostart/autofixinish fire.
+int giCorrectionBoxAlreadyActive, ;used to indicate if the correction box is already active when autostart/autofixinish fire.
+int giBoxTypeActive
 
 int Function HandleCustomAppWindows (handle hWnd)
+var
+handle hPlayThatBack,
+string msgCorrectionAndSpellBoxOpenedPrompt_L = "%1 box opened.",
+string strBoxOpenedMessage
+
 if StringCompare (GetWindowName (hwnd), "Loading Dragon NaturallySpeaking", false) ==0
 ;We are loading dragon.
 giDragonLoading =1
 endif
 if StringCompare ("ClsSpellDialog", GetWindowClass (hWnd), false) ==0 && giJustEnteredCorrectionBox==0 ;only run this code if we have entered the correction box and the correction box has just been opened.
 if giJustEnteredCorrectionBox ==0 
-SayUsingVoice (vctx_message, "Correction box opened", ot_dialog_name)
+hPlayThatBack =FindDescendantWindow (hwnd, 11162)
+if !IsWindowDisabled (hPlayThatBack)
+strBoxOpenedMessage =FormatString (msgCorrectionAndSpellBoxOpenedPrompt_l, "Correction")
+giBoxTypeActive =CSCCorrectionDialog 
+else
+strBoxOpenedMessage =FormatString (msgCorrectionAndSpellBoxOpenedPrompt_l, "Spell")
+giBoxTypeActive =CSCSpellDialog 
+endif
+SayUsingVoice (vctx_message, strBoxOpenedMessage, ot_dialog_name)
 giDragonLoading =0
 giJustEnteredCorrectionBox  =1
 giCorrectionBoxAlreadyActive =1
@@ -49,10 +68,19 @@ EndFunction
 
 function AutoFinishEvent()
 var
+string msgCorrectionAndSpellBoxClosedPrompt_L = "%1 box closed.",
+string strBoxClosedMessage,
 handle correctionBoxWindow =FindTopLevelWindow ("ClsSpellDialog", "")
 if !IsWindowVisible (correctionBoxWindow) && giDragonLoading ==0
-SayUsingVoice (vctx_message, "Correction box closed.", ot_string)
+if giBoxTypeActive ==CSCCorrectionDialog 
+strBoxClosedMessage =FormatString(msgCorrectionAndSpellBoxClosedPrompt_l, "Correction")
+else if giBoxTypeActive ==cscSpellDialog
+strBoxClosedMessage =FormatString(msgCorrectionAndSpellBoxClosedPrompt_l, "Spell")
+endif
+endif
+SayUsingVoice (vctx_message, strBoxClosedMessage, ot_string)
 giCorrectionBoxAlreadyActive =0
 giJustEnteredCorrectionBox =0
+giBoxTypeActive =0
 Endif
 endfunction
