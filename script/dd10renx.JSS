@@ -84,3 +84,43 @@ giJustEnteredCorrectionBox =0
 giBoxTypeActive =0
 Endif
 endfunction
+
+int Function HandleCustomWindows (handle hWnd)
+if GetControlID (hwnd) ==11035
+SayControlEx (hwnd, GetWindowName(hwnd), GetObjectSubtype (), GetObjectState (), "", "", GetWindowTextEx (hwnd, 1, 0, 1), "x2", "")
+return true
+else
+return HandleCustomWindows(hwnd)
+endif
+EndFunction
+
+script SayLine()
+var 
+string windowText
+if GetControlID (GetFocus()) ==11035
+let windowText =GetWindowTextEx (GetFocus(), 1, 0, 1)
+if IsSameScript ()
+SayUsingVoice (vctx_pccursor, windowText, ot_spell)
+else
+SayUsingVoice (vctx_pccursor, windowText, ot_line)
+endif
+endif
+EndScript
+
+script SayPriorLine()
+if GetControlID (GetFocus()) ==11035
+PriorLine ()
+SayUsingVoice (vctx_pccursor, GetWindowTextEx (GetFocus(), 1, 0, 1), ot_line)
+else
+PerformScript SayPriorLine()
+endif
+endscript
+
+script SayNextLine()
+if GetControlID (GetFocus()) ==11035
+NextLine ()
+SayUsingVoice (vctx_pccursor, GetWindowTextEx (GetFocus(), 1, 0, 1), ot_line)
+else
+PerformScript SayNextLine()
+endif
+endscript
