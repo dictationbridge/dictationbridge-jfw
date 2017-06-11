@@ -1,5 +1,6 @@
 #define UNICODE
 #include <windows.h>
+#include <TlHelp32.h>
 #include <ole2.h>
 #include <AtlBase.h>
 #include <algorithm>
@@ -21,6 +22,75 @@ exit(1);\
 } while(0)
 
 CComPtr<IJawsApi> pJfw =nullptr;
+
+HRESULT FindIdsIfProcessIsRunning(__in_z LPCWSTR wzExeName, __out DWORD** ppdwProcessIds, __out DWORD* pcProcessIds)
+{
+	HRESULT hr = S_FALSE;
+	DWORD er = ERROR_SUCCESS;
+	HANDLE hSnapshot = INVALID_HANDLE_VALUE;
+	bool fContinue = false;
+	PROCESSENTRY32 peData = { sizeof(peData) };
+	hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (hSnapshot == INVALID_HANDLE_VALUE)
+	{
+		er = GetLastError();
+		hr = HRESULT_FROM_WIN32(er);
+			goto LExit;
+	}
+	
+	fContinue = Process32First(hSnapshot, &peData);
+	while (fContinue)
+	{
+		if (wcsicmp(wzExeName, peData.szExeFile) == 0)
+		{
+			if (!*ppdwProcessIds)
+			{
+				hr = S_OK;
+				*ppdwProcessIds = static_cast<DWORD*>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(DWORD)));
+				
+				if (*ppdwProcessIds == nullptr)
+				{
+					hr = E_OUTOFMEMORY;
+					goto LExit;
+			}
+			}
+			else
+			{
+				DWORD* pdwReAllocReturnedPids = static_cast<DWORD*>(HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, *ppdwProcessIds, sizeof(DWORD) * ((*pcProcessIds) + 1)));
+				
+				if (pdwReAllocReturnedPids == nullptr)
+				{
+					hr = E_OUTOFMEMORY;
+					goto LExit;
+			}
+				
+				*ppdwProcessIds = pdwReAllocReturnedPids;
+			}
+			
+			(*ppdwProcessIds)[*pcProcessIds] = peData.th32ProcessID;
+			++(*pcProcessIds);
+		}
+		fContinue = Process32NextW(hSnapshot, &peData);
+	}
+	
+	er = ::GetLastError();
+	if (er == ERROR_NO_MORE_FILES && *pcProcessIds >0)
+	{
+		hr = S_OK;
+	}
+	else
+	{
+		hr = HRESULT_FROM_WIN32(er);
+	}
+
+LExit:
+	if (hSnapshot != nullptr)
+	{
+		CloseHandle(hSnapshot);
+	}
+	
+	return hr;
+}
 
 void initSpeak() {
 	CLSID JFWClass;
