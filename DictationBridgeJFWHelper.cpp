@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <sstream>
 #include <string>
+using namespace std;
 #include "FSAPI.h"
 #include "dictationbridge-core/master/master.h"
 #include "combool.h"
@@ -22,10 +23,12 @@ exit(1);\
 } while(0)
 
 CComPtr<IJawsApi> pJfw =nullptr;
+HWINEVENTHOOK hNatspeakNameChangedHook;
+HWINEVENTHOOK hDragonBarNameChangedHook;
 
 HRESULT FindIdsIfProcessIsRunning(__in_z LPCWSTR wzExeName, __out DWORD** ppdwProcessIds, __out DWORD* pcProcessIds)
 {
-	HRESULT hr = S_FALSE;
+	HRESULT hr = S_OK;
 	DWORD er = ERROR_SUCCESS;
 	HANDLE hSnapshot = INVALID_HANDLE_VALUE;
 	bool fContinue = false;
@@ -92,20 +95,120 @@ LExit:
 	return hr;
 }
 
-void initSpeak() {
-	CLSID JFWClass;
-	auto res = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
-	ERR(res, L"Couldn't get Jaws interface ID");
-res =pJfw.CoCreateInstance(JFWClass);
-	ERR(res, L"Couldn't create Jaws interface");
-}
+void initJAWSIfRunning() 
+{
+	DWORD *prgProcessIds = nullptr;
+	DWORD cProcessIds = 0, iProcessId;
+	auto res = FindIdsIfProcessIsRunning(L"jfw.exe", &prgProcessIds, &cProcessIds);
+	if (SUCCEEDED(res) && cProcessIds >= 1)
+	{
+		HeapFree(GetProcessHeap(), 0, prgProcessIds);
+		CLSID JFWClass;
+		res = S_FALSE;
+		res = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
+		ERR(res, L"Couldn't get Jaws interface ID");
+		res = pJfw.CoCreateInstance(JFWClass);
+		ERR(res, L"Couldn't create Jaws interface");
+	}
+	}
 
 void speak(std::wstring text) {
-CComBSTR bS =CComBSTR(text.size(), text.data());
-CComBool silence =false;
-CComBool bResult;
+	CComBSTR bS = CComBSTR(text.size(), text.data());
+	CComBool silence = false;
+	CComBool bResult;
 	pJfw->SayString(bS, silence, &bResult);
 }
+
+//These are string constants for the microphone status, as well as the status itself:
+//The pointer below is set to the last one we saw.
+std::wstring MICROPHONE_OFF = L"Dragon's microphone is off;";
+std::wstring MICROPHONE_ON = L"Normal mode: You can dictate and use voice";
+std::wstring MICROPHONE_SLEEPING = L"The microphone is asleep;";
+
+std::wstring microphoneState;
+//This is a constant for the text indicating dragon hasn't understood what a user has dictated.
+const std::wstring DictationWasNotUnderstood = L"<???>";
+
+void announceMicrophoneState(const std::wstring state) {
+	if (state == MICROPHONE_ON) speak(L"Microphone on.");
+	else if (state == MICROPHONE_OFF) speak(L"Microphone off.");
+	else if (state == MICROPHONE_SLEEPING) speak(L"Microphone sleeping.");
+	else speak(L"Microphone in unknown state.");
+}
+
+wchar_t processNameBuffer[1024] = { 0 };
+
+void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
+	//First, is it coming from natspeak.exe?
+	DWORD procId;
+	GetWindowThreadProcessId(hwnd, &procId);
+	auto procHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, procId);
+	//We can't recover from this failing, so abort.
+	if (procHandle == NULL) return;
+	DWORD len = 1024;
+	auto res = QueryFullProcessImageName(procHandle, 0, processNameBuffer, &len);
+	CloseHandle(procHandle);
+	if (res == 0) return;
+	std::wstring processName = processNameBuffer;
+	if (processName.find(L"dragonbar.exe") == std::string::npos
+		&& processName.find(L"natspeak.exe") == std::string::npos) return;
+	//Attempt to get the new text.
+	CComPtr<IAccessible> pAcc;
+	CComVariant vChild;
+	HRESULT hres = AccessibleObjectFromEvent(hwnd, idObject, idChild, &pAcc, &vChild);
+	if (hres != S_OK) return;
+	CComBSTR bName;
+	hres = pAcc->get_accName(vChild, &bName);
+	if (hres != S_OK) return;
+	std::wstring name = bName;
+	//check to see whether Dragon understood the user.
+	if (name.compare(DictationWasNotUnderstood) == 0)
+	{
+		speak(L"I do not understand.");
+		return;
+	}
+	const std::wstring possibles[] = { MICROPHONE_ON, MICROPHONE_OFF, MICROPHONE_SLEEPING };
+	std::wstring newState = microphoneState;
+	for (int i = 0; i < 3; i++) {
+		if (name.find(possibles[i]) != std::string::npos) {
+			newState = possibles[i];
+			break;
+		}
+	}
+	if (newState != microphoneState) {
+		announceMicrophoneState(newState);
+		microphoneState = newState;
+	}
+}
+
+void InitializeWindowsCallbackForDragonProcesses()
+{
+	DWORD *prgProcessIds = nullptr;
+	DWORD cProcessIds = 0, iProcessId;
+	auto res = FindIdsIfProcessIsRunning(L"natspeak.exe", &prgProcessIds, &cProcessIds);
+	if (SUCCEEDED(res) && cProcessIds >0)
+	{
+		for (iProcessId = 0; iProcessId < cProcessIds; ++iProcessId)
+		{
+			hNatspeakNameChangedHook = SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, NULL, nameChanged, prgProcessIds[iProcessId], 0, WINEVENT_OUTOFCONTEXT);
+			}
+		HeapFree(GetProcessHeap(), 0, static_cast<LPVOID>(prgProcessIds));
+		prgProcessIds = NULL;
+	}
+
+	//Find an initialize the DragonBar hook.
+	cProcessIds = 0, iProcessId = 0;
+	res = FindIdsIfProcessIsRunning(L"dragonbar.exe", &prgProcessIds, &cProcessIds);
+	if (SUCCEEDED(res) && cProcessIds >0)
+	{
+		for (iProcessId = 0; iProcessId < cProcessIds; ++iProcessId)
+		{
+			hDragonBarNameChangedHook = SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, NULL, nameChanged, prgProcessIds[iProcessId], 0, WINEVENT_OUTOFCONTEXT);
+		}
+		HeapFree(GetProcessHeap(), 0, static_cast<LPVOID>(prgProcessIds));
+		prgProcessIds = NULL;
+	}
+	}
 
 void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR textUnprocessed) {
 	//We need to replace \r with nothing.
@@ -134,68 +237,6 @@ deletedText << text;
 	speak(deletedText.str().c_str());
 }
 
-//These are string constants for the microphone status, as well as the status itself:
-//The pointer below is set to the last one we saw.
-std::wstring MICROPHONE_OFF = L"Dragon's microphone is off;";
-std::wstring MICROPHONE_ON = L"Normal mode: You can dictate and use voice";
-std::wstring MICROPHONE_SLEEPING = L"The microphone is asleep;";
-
-std::wstring microphoneState;
-//This is a constant for the text indicating dragon hasn't understood what a user has dictated.
-const std::wstring DictationWasNotUnderstood =L"<???>";
-
-void announceMicrophoneState(const std::wstring state) {
-	if(state == MICROPHONE_ON) speak(L"Microphone on.");
-	else if(state == MICROPHONE_OFF) speak(L"Microphone off.");
-	else if(state == MICROPHONE_SLEEPING) speak(L"Microphone sleeping.");
-	else speak(L"Microphone in unknown state.");
-}
-
-wchar_t processNameBuffer[1024] = {0};
-
-void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
-	//First, is it coming from natspeak.exe?
-	DWORD procId;
-	GetWindowThreadProcessId(hwnd, &procId);
-	auto procHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, procId);
-	//We can't recover from this failing, so abort.
-	if(procHandle == NULL) return;
-	DWORD len = 1024;
-	auto res = QueryFullProcessImageName(procHandle, 0, processNameBuffer, &len);
-	CloseHandle(procHandle);
-	if(res == 0) return;
-std::wstring processName =processNameBuffer;
-	if(processName.find(L"dragonbar.exe") == std::string::npos
-		&& processName.find(L"natspeak.exe") == std::string::npos) return;
-	//Attempt to get the new text.
-CComPtr<IAccessible> pAcc;
-CComVariant vChild;
-	HRESULT hres = AccessibleObjectFromEvent(hwnd, idObject, idChild, &pAcc, &vChild);
-	if(hres != S_OK) return;
-CComBSTR bName;
-	hres = pAcc->get_accName(vChild, &bName);
-	if(hres != S_OK) return;
-std::wstring name =bName;
-//check to see whether Dragon understood the user.
-if (name .compare(DictationWasNotUnderstood) ==0)
-{
-speak(L"I do not understand.");
-return;
-}
-	const std::wstring possibles[] = {MICROPHONE_ON, MICROPHONE_OFF, MICROPHONE_SLEEPING};
-std::wstring newState = microphoneState;
-	for(int i = 0; i < 3; i++) {
-		if(name.find(possibles[i]) != std::string::npos) {
-			newState = possibles[i];
-			break;
-		}
-	}
-	if(newState != microphoneState) {
-		announceMicrophoneState(newState);
-		microphoneState = newState;
-	}
-}
-
 int keepRunning = 1; // Goes to 0 on WM_CLOSE.
 LPCTSTR msgWindowClassName = L"DictationBridgeJFWHelper";
 
@@ -211,7 +252,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	// First, is a core running?
 	if(FindWindow(msgWindowClassName, NULL)) {
 		MessageBox(NULL, L"Core already running.", NULL, NULL);
-		return 0;
+			return 0;
 	}
 	WNDCLASS windowClass = {0};
 	windowClass.lpfnWndProc = exitProc;
@@ -230,7 +271,10 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	HRESULT res;
 	res = OleInitialize(NULL);
 	ERR(res, L"Couldn't initialize OLE");
-	initSpeak();
+	
+	//Initialize JAWS if it is running.
+	initJAWSIfRunning();
+
 	auto started = DBMaster_Start();
 	if(!started) {
 		printf("Couldn't start DictationBridge-core\n");
@@ -238,10 +282,10 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	}
 	DBMaster_SetTextInsertedCallback(textCallback);
 	DBMaster_SetTextDeletedCallback(textDeletedCallback);
-	if(SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, NULL, nameChanged, 0, 0, WINEVENT_OUTOFCONTEXT) == 0) {
-		printf("Couldn't register to receive events\n");
-		return 1;
-	}
+	
+	//register to receive events from both the natspeak and DragonBar processes.
+	InitializeWindowsCallbackForDragonProcesses();
+
 	MSG msg;
 	while(GetMessage(&msg, NULL, NULL, NULL) > 0) {
 		TranslateMessage(&msg);
@@ -249,6 +293,18 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 		if(keepRunning == 0) break;
 	}
 	DBMaster_Stop();
+	if (hNatspeakNameChangedHook != 0)
+	{
+		UnhookWinEvent(hNatspeakNameChangedHook);
+		hNatspeakNameChangedHook = nullptr;
+	}
+	
+	if (hDragonBarNameChangedHook != 0)
+	{
+		UnhookWinEvent(hDragonBarNameChangedHook);
+		hDragonBarNameChangedHook = nullptr;
+	}
+
 	OleUninitialize();
 	DestroyWindow(msgWindowHandle);
 	return 0;
