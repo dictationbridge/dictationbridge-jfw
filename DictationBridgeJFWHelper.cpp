@@ -244,6 +244,14 @@ LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In
 	if(msg == WM_CLOSE) keepRunning = 0;
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
+void StartProcessTracking()
+{
+	
+}
+void TerminateProcessTracking()
+{
+	
+}
 
 int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	_In_ HINSTANCE hPrevInstance,
@@ -284,13 +292,16 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	
 	//register to receive events from both the natspeak and DragonBar processes.
 	InitializeWindowsCallbackForDragonProcesses();
-
+	StartProcessTracking();
+	
 	MSG msg;
 	while(GetMessage(&msg, NULL, NULL, NULL) > 0) {
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 		if(keepRunning == 0) break;
 	}
+	
+	//Shutdown all subsystems.
 	DBMaster_Stop();
 	if (hNatspeakNameChangedHook != 0)
 	{
@@ -303,7 +314,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 		UnhookWinEvent(hDragonBarNameChangedHook);
 		hDragonBarNameChangedHook = nullptr;
 	}
-
+	TerminateProcessTracking();
 CoUninitialize();
 	DestroyWindow(msgWindowHandle);
 	return 0;
