@@ -268,9 +268,8 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 		MessageBox(NULL, L"Failed to create message-only window.", NULL, NULL);
 		return 0;
 	}
-	HRESULT res;
-	res = OleInitialize(NULL);
-	ERR(res, L"Couldn't initialize OLE");
+	HRESULT res = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+	ERR(res, L"Couldn't initialize COM.");
 	
 	//Initialize JAWS if it is running.
 	initJAWSIfRunning();
@@ -305,7 +304,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 		hDragonBarNameChangedHook = nullptr;
 	}
 
-	OleUninitialize();
+CoUninitialize();
 	DestroyWindow(msgWindowHandle);
 	return 0;
 }
