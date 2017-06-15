@@ -7,6 +7,8 @@
 #include <comdef.h>
 #include <sstream>
 #include <string>
+#include <map>
+#include <utility>
 using namespace std;
 #include "FSAPI.h"
 #include "dictationbridge-core/master/master.h"
@@ -25,9 +27,8 @@ exit(1);\
 } while(0)
 
 CComPtr<IJawsApi> pJfw =nullptr;
-HWINEVENTHOOK hNatspeakNameChangedHook;
-HWINEVENTHOOK hDragonBarNameChangedHook;
 ProcessMonitor *pProcessMonitor;
+map<wstring, HWINEVENTHOOK> ProcessWinEventHooks; //Hold the WinEvent hooks for each process.
 //variables for WMI.
 CComPtr<					  IWbemLocator> pLoc = nullptr;
 CComPtr<	IWbemServices> pSvc = nullptr;
@@ -104,21 +105,14 @@ LExit:
 	return hr;
 }
 
-void initJAWSIfRunning() 
+void initJAWS() 
 {
-	DWORD *prgProcessIds = nullptr;
-	DWORD cProcessIds = 0, iProcessId;
-	auto res = FindIdsIfProcessIsRunning(L"jfw.exe", &prgProcessIds, &cProcessIds);
-	if (SUCCEEDED(res) && cProcessIds >= 1)
-	{
-		HeapFree(GetProcessHeap(), 0, prgProcessIds);
 		CLSID JFWClass;
-		res = S_FALSE;
-		res = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
-		ERR(res, L"Couldn't get Jaws interface ID");
-		res = pJfw.CoCreateInstance(JFWClass);
-		ERR(res, L"Couldn't create Jaws interface");
-	}
+HRESULT hr = S_FALSE;
+		hr = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
+		ERR(hr, L"Couldn't get Jaws interface ID");
+		hr = pJfw.CoCreateInstance(JFWClass);
+		ERR(hr, L"Couldn't create Jaws interface");
 	}
 
 void speak(std::wstring text) {
@@ -190,7 +184,21 @@ void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, L
 	}
 }
 
-void InitializeWindowsCallbackForDragonProcesses()
+HRESULT SetWinEventHookForProcess(_In_ DWORD eventMin, _In_ DWORD eventMax, _In_ WINEVENTPROC pfnWinEventProc, _In_ DWORD idProcess)
+{
+	HRESULT hr = S_FALSE;
+		HWINEVENTHOOK hook = SetWinEventHook(eventMin, eventMax, NULL, pfnWinEventProc, idProcess, 0, WINEVENT_OUTOFCONTEXT);
+		if (hook != 0)
+		{
+			//Add to the map so that we can unhook later.
+			ProcessWinEventHooks.insert(make_pair(L"natspeak.exe", hook));
+		hr =S_OK;
+		}
+		
+		return hr;
+}
+
+void InitializeWindowsHooksForDragonProcesses()
 {
 	DWORD *prgProcessIds = nullptr;
 	DWORD cProcessIds = 0, iProcessId;
@@ -199,20 +207,21 @@ void InitializeWindowsCallbackForDragonProcesses()
 	{
 		for (iProcessId = 0; iProcessId < cProcessIds; ++iProcessId)
 		{
-			hNatspeakNameChangedHook = SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, NULL, nameChanged, prgProcessIds[iProcessId], 0, WINEVENT_OUTOFCONTEXT);
+			res = SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, prgProcessIds[iProcessId]);
 			}
 		HeapFree(GetProcessHeap(), 0, static_cast<LPVOID>(prgProcessIds));
 		prgProcessIds = NULL;
+		cProcessIds = 0;
 	}
 
 	//Find an initialize the DragonBar hook.
-	cProcessIds = 0, iProcessId = 0;
+	res = S_FALSE;
 	res = FindIdsIfProcessIsRunning(L"dragonbar.exe", &prgProcessIds, &cProcessIds);
 	if (SUCCEEDED(res) && cProcessIds >0)
 	{
 		for (iProcessId = 0; iProcessId < cProcessIds; ++iProcessId)
 		{
-			hDragonBarNameChangedHook = SetWinEventHook(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, NULL, nameChanged, prgProcessIds[iProcessId], 0, WINEVENT_OUTOFCONTEXT);
+			res = SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, prgProcessIds[iProcessId]);
 		}
 		HeapFree(GetProcessHeap(), 0, static_cast<LPVOID>(prgProcessIds));
 		prgProcessIds = NULL;
@@ -254,13 +263,13 @@ LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
-void WINAPI processCreatedCallback(DWORD processID, LPCWSTR text)
+void WINAPI processCreatedCallback(DWORD processID, LPCWSTR processName)
 {
 	MessageBox(NULL, L"Callback called.", L"Process creation", MB_OK | MB_ICONERROR);
 	return;
 }
 
-void WINAPI processDeletedCallback(LPCWSTR text)
+void WINAPI processDeletedCallback(LPCWSTR processName)
 {
 	MessageBox(NULL, L"Process deleted callback called.", L"Process creation", MB_OK | MB_ICONERROR);
 	return;
@@ -329,6 +338,15 @@ HRESULT InitializeCom()
 		return hr;
 }
 
+void UnhookAllWinEventProcessSpecificHooks()
+{
+	for (auto & specificProcessHook : ProcessWinEventHooks)
+	{
+		UnhookWinEvent(specificProcessHook.second);
+}
+	ProcessWinEventHooks.clear();
+}
+
 int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	_In_ HINSTANCE hPrevInstance,
 	_In_ LPSTR lpCmdLine,
@@ -360,7 +378,16 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	}
 	
 	//Initialize JAWS if it is running.
-	initJAWSIfRunning();
+	DWORD *prgProcessIds = nullptr;
+	DWORD cProcessIds = 0, iProcessId;
+	hr = FindIdsIfProcessIsRunning(L"jfw.exe", &prgProcessIds, &cProcessIds);
+	if (SUCCEEDED(hr) && cProcessIds >1)
+	{
+		HeapFree(GetProcessHeap(), 0, prgProcessIds);
+		prgProcessIds = NULL;
+		cProcessIds = 0;
+		initJAWS();
+	}
 
 	auto started = DBMaster_Start();
 	if(!started) {
@@ -372,7 +399,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	DBMaster_SetTextDeletedCallback(textDeletedCallback);
 	
 	//register to receive events from both the natspeak and DragonBar processes.
-	InitializeWindowsCallbackForDragonProcesses();
+	InitializeWindowsHooksForDragonProcesses();
 	StartProcessTracking();
 	
 	MSG msg;
@@ -384,17 +411,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	
 	//Shutdown all subsystems.
 	DBMaster_Stop();
-	if (hNatspeakNameChangedHook != 0)
-	{
-		UnhookWinEvent(hNatspeakNameChangedHook);
-		hNatspeakNameChangedHook = nullptr;
-	}
-	
-	if (hDragonBarNameChangedHook != 0)
-	{
-		UnhookWinEvent(hDragonBarNameChangedHook);
-		hDragonBarNameChangedHook = nullptr;
-	}
+	UnhookAllWinEventProcessSpecificHooks();
 	TerminateProcessTracking();
 CoUninitialize();
 	DestroyWindow(msgWindowHandle);
