@@ -1,7 +1,7 @@
 // ProcessMonitor.h
 
-#ifndef EVENTSINK_H
-#define EPROCESSMONITOR_H
+#ifndef PROCESSMONITOR_H
+#define PROCESSMONITOR_H
 #define UNICODE
 #define _WIN32_DCOM
 

@@ -4,16 +4,18 @@
 #include <ole2.h>
 #include <AtlBase.h>
 #include <algorithm>
+#include <comdef.h>
 #include <sstream>
 #include <string>
 using namespace std;
 #include "FSAPI.h"
 #include "dictationbridge-core/master/master.h"
 #include "combool.h"
+#include "ProcessMonitor.h"
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "oleacc.lib")
-
+#pragma comment(lib, "comsuppw.lib")
 
 #define ERR(x, msg) do { \
 if(x != S_OK) {\
@@ -25,6 +27,13 @@ exit(1);\
 CComPtr<IJawsApi> pJfw =nullptr;
 HWINEVENTHOOK hNatspeakNameChangedHook;
 HWINEVENTHOOK hDragonBarNameChangedHook;
+ProcessMonitor *pProcessMonitor;
+//variables for WMI.
+CComPtr<					  IWbemLocator> pLoc = nullptr;
+CComPtr<	IWbemServices> pSvc = nullptr;
+CComPtr<IUnsecuredApartment> pUnsecApp = nullptr;
+CComPtr<IUnknown> pStubUnk = nullptr;
+CComPtr<IWbemObjectSink> pStubSink = nullptr;
 
 HRESULT FindIdsIfProcessIsRunning(__in_z LPCWSTR wzExeName, __out DWORD** ppdwProcessIds, __out DWORD* pcProcessIds)
 {
@@ -244,24 +253,95 @@ LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In
 	if(msg == WM_CLOSE) keepRunning = 0;
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
+
+void WINAPI processCreatedCallback(DWORD processID, LPCWSTR text)
+{
+	MessageBox(NULL, L"Callback called.", L"Process creation", MB_OK | MB_ICONERROR);
+	return;
+}
+
+void WINAPI processDeletedCallback(LPCWSTR text)
+{
+	MessageBox(NULL, L"Process deleted callback called.", L"Process creation", MB_OK | MB_ICONERROR);
+	return;
+}
+
 void StartProcessTracking()
 {
-	
+	CComBSTR bRootNamespace = L"ROOT\\CIMV2";
+	CComBSTR bWQL = L"WQL";
+	CComBSTR bWQLQuery = "SELECT * FROM __InstanceOperationEvent WITHIN 1 WHERE TargetInstance ISA 'Win32_Process'";
+//Com and security are initialized in WinMain.
+	HRESULT hr = S_OK;
+	// Obtain the initial locator to WMI
+	hr = pLoc.CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER);
+	ERR(hr, L"Failed to create IWbemLocator object.");
+
+	// Connect to WMI through the IWbemLocator::ConnectServer method
+	// Connect to the local root\cimv2 namespace
+	// and obtain pointer pSvc to make IWbemServices calls.
+	hr = pLoc->ConnectServer(bRootNamespace, NULL, NULL, 0, NULL, 0, 0, &pSvc);
+	ERR(hr, L"Could not connect to the WMI root\\\\cimv2 namespace.");
+
+	// Set security levels on the proxy 
+	hr = CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, NULL, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE);
+	ERR(hr, L"Could not set proxy blanket.");
+
+	// Receive event notifications
+	// Use an unsecured apartment for security
+	hr = pUnsecApp.CoCreateInstance(CLSID_UnsecuredApartment, NULL, CLSCTX_LOCAL_SERVER);
+	ERR(hr, L"Unable to create the unsecured apartment.");
+
+	pProcessMonitor = new ProcessMonitor;
+	pProcessMonitor->SetProcessCreatedCallback(&processCreatedCallback);
+	pProcessMonitor->SetProcessDeletedCallback(&processDeletedCallback);
+	pProcessMonitor->AddRef();
+
+	hr = pUnsecApp->CreateObjectStub(pProcessMonitor, &pStubUnk);
+	ERR(hr, L"Could not create the object forwarder sink for use by WMI.");
+
+
+	hr = pStubUnk->QueryInterface(IID_IWbemObjectSink, (void **)&pStubSink);
+	ERR(hr, L"could not obtain the IWbemObjectSink interface.");
+
+	// The ExecNotificationQueryAsync method will call
+	// The EventQuery::Indicate method when an event occurs
+	hr = pSvc->ExecNotificationQueryAsync(bWQL, bWQLQuery, WBEM_FLAG_SEND_STATUS, NULL, pStubSink);
+	ERR(hr, L"ExecNotificationQueryAsync failed.");
 }
+
 void TerminateProcessTracking()
 {
-	
+	HRESULT res = S_OK;
+	res = pSvc->CancelAsyncCall(pStubSink);
+	ERR(res, L"Unable to cancel the process tracking.");
+}
+
+HRESULT InitializeCom()
+{
+	HRESULT hr = S_OK;
+	hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+	if (SUCCEEDED(hr))
+	{
+		// Set general COM security levels
+		hr = CoInitializeSecurity(NULL, -1, NULL, NULL, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE, NULL);
+	}
+		return hr;
 }
 
 int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	_In_ HINSTANCE hPrevInstance,
 	_In_ LPSTR lpCmdLine,
-	_In_ int nCmdShow) {
+	_In_ int nCmdShow) 
+{
 	// First, is a core running?
 	if(FindWindow(msgWindowClassName, NULL)) {
 		MessageBox(NULL, L"Core already running.", NULL, NULL);
 			return 0;
 	}
+	//Next, initialize COM.
+	HRESULT hr = InitializeCom();
+
 	WNDCLASS windowClass = {0};
 	windowClass.lpfnWndProc = exitProc;
 	windowClass.hInstance = hInstance;
@@ -269,15 +349,15 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	auto msgWindowClass = RegisterClass(&windowClass);
 	if(msgWindowClass == 0) {
 		MessageBox(NULL, L"Failed to register window class.", NULL, NULL);
+		CoUninitialize();
 		return 0;
 	}
 	auto msgWindowHandle = CreateWindow(msgWindowClassName, NULL, NULL, NULL, NULL, NULL, NULL, HWND_MESSAGE, NULL, GetModuleHandle(NULL), NULL);
 	if(msgWindowHandle == 0) {
 		MessageBox(NULL, L"Failed to create message-only window.", NULL, NULL);
+		CoUninitialize();
 		return 0;
 	}
-	HRESULT res = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-	ERR(res, L"Couldn't initialize COM.");
 	
 	//Initialize JAWS if it is running.
 	initJAWSIfRunning();
@@ -285,6 +365,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	auto started = DBMaster_Start();
 	if(!started) {
 		printf("Couldn't start DictationBridge-core\n");
+		CoUninitialize();
 		return 1;
 	}
 	DBMaster_SetTextInsertedCallback(textCallback);
