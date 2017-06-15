@@ -282,7 +282,7 @@ void WINAPI processDeletedCallback(LPCWSTR processName)
 		pJfw.Release();
 		pJfw = nullptr;
 	}
-	else if (wcsicmp(processName, natspeakProcessName) == 0)
+	else if (wcsicmp(processName, natspeakProcessName) == 0 || wcsicmp(processName, dragonbarProcessName) == 0)
 	{
 		//the natspeak process has terminated, so unhook the winevent for that process.
 		auto processHook = ProcessWinEventHooks.find(processName);
@@ -292,16 +292,7 @@ void WINAPI processDeletedCallback(LPCWSTR processName)
 			ProcessWinEventHooks.erase(processHook);
 		}
 	}
-	else if (wcsicmp(processName, dragonbarProcessName) == 0)
-	{
-		//the dragonbar process has terminated, so unhook the winevent for that process.
-		auto processHook = ProcessWinEventHooks.find(processName);
-		if (processHook != end(ProcessWinEventHooks))
-		{
-			UnhookWinEvent(processHook->second);
-			ProcessWinEventHooks.erase(processHook);
-		}
-	}
+
 	return;
 }
 
