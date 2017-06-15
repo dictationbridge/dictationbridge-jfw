@@ -263,6 +263,11 @@ LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
+//constants for process we need to keep track of.
+const LPCWSTR jawsProcessName = L"jfw.exe";
+const LPCWSTR natspeakProcessName = L"natspeak.exe";
+const LPCWSTR dragonbarProcessName = L"natspeak.exe";
+
 void WINAPI processCreatedCallback(DWORD processID, LPCWSTR processName)
 {
 	MessageBox(NULL, L"Callback called.", L"Process creation", MB_OK | MB_ICONERROR);
@@ -271,7 +276,32 @@ void WINAPI processCreatedCallback(DWORD processID, LPCWSTR processName)
 
 void WINAPI processDeletedCallback(LPCWSTR processName)
 {
-	MessageBox(NULL, L"Process deleted callback called.", L"Process creation", MB_OK | MB_ICONERROR);
+	if (wcsicmp(processName, jawsProcessName) == 0)
+	{
+		//JAWS has exited, so release the API pointer.
+		pJfw.Release();
+		pJfw = nullptr;
+	}
+	else if (wcsicmp(processName, natspeakProcessName) == 0)
+	{
+		//the natspeak process has terminated, so unhook the winevent for that process.
+		auto processHook = ProcessWinEventHooks.find(processName);
+		if (processHook != end(ProcessWinEventHooks))
+		{
+			UnhookWinEvent(processHook->second);
+			ProcessWinEventHooks.erase(processHook);
+		}
+	}
+	else if (wcsicmp(processName, dragonbarProcessName) == 0)
+	{
+		//the dragonbar process has terminated, so unhook the winevent for that process.
+		auto processHook = ProcessWinEventHooks.find(processName);
+		if (processHook != end(ProcessWinEventHooks))
+		{
+			UnhookWinEvent(processHook->second);
+			ProcessWinEventHooks.erase(processHook);
+		}
+	}
 	return;
 }
 
