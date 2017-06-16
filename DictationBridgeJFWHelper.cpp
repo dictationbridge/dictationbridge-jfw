@@ -255,22 +255,40 @@ deletedText << text;
 	speak(deletedText.str().c_str());
 }
 
-int keepRunning = 1; // Goes to 0 on WM_CLOSE.
-LPCTSTR msgWindowClassName = L"DictationBridgeJFWHelper";
-
-LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In_ LPARAM lparam) {
-	if(msg == WM_CLOSE) keepRunning = 0;
-	return DefWindowProc(hwnd, msg, wparam, lparam);
+void UnhookAllWinEventProcessSpecificHooks()
+{
+	for (auto & specificProcessHook : ProcessWinEventHooks)
+	{
+		UnhookWinEvent(specificProcessHook.second);
+	}
+	ProcessWinEventHooks.clear();
 }
 
-//constants for process we need to keep track of.
+//constants for processes we need to keep track of.
 const LPCWSTR jawsProcessName = L"jfw.exe";
 const LPCWSTR natspeakProcessName = L"natspeak.exe";
-const LPCWSTR dragonbarProcessName = L"natspeak.exe";
+const LPCWSTR dragonbarProcessName = L"dragonbar.exe";
+const LPCWSTR NVDAProcessName = L"nvda.exe";
 
 void WINAPI processCreatedCallback(DWORD processID, LPCWSTR processName)
 {
-	MessageBox(NULL, L"Callback called.", L"Process creation", MB_OK | MB_ICONERROR);
+	if (wcsicmp(processName, jawsProcessName) == 0)
+	{
+		//JAWS has bn started, so initialize the Freedom scientific API.
+		initJAWS();
+	}
+	else if (wcsicmp(processName, dragonbarProcessName) == 0 || wcsicmp(processName, natspeakProcessName) ==0 )
+	{
+		//The dragon bar or natspeak processes have started, so hook the NameChanged event.
+		 SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, processID);
+	}
+	else if (wcsicmp(processName, NVDAProcessName) == 0)
+	{
+		//NVDA has been started, so we unhook all windows hooks and release the JAWS pointer s we assume something has gone wrong with JAWS.
+		pJfw.Release();
+		pJfw = nullptr;
+		UnhookAllWinEventProcessSpecificHooks();
+	}
 	return;
 }
 
@@ -292,7 +310,22 @@ void WINAPI processDeletedCallback(LPCWSTR processName)
 			ProcessWinEventHooks.erase(processHook);
 		}
 	}
+	else if (wcsicmp(processName, NVDAProcessName) == 0)
+	{
+		//NVDA has exited, so check whether JAWS and dragon are running and initialize them if necessary.
+		//Initialize JAWS if it is running.
+		DWORD *prgProcessIds = nullptr;
+		DWORD cProcessIds = 0, iProcessId;
+		if (SUCCEEDED(FindIdsIfProcessIsRunning(L"jfw.exe", &prgProcessIds, &cProcessIds)) && cProcessIds >1)
+		{
+			HeapFree(GetProcessHeap(), 0, prgProcessIds);
+			prgProcessIds = NULL;
+			cProcessIds = 0;
+			initJAWS();
+		}
 
+		InitializeWindowsHooksForDragonProcesses();
+	}
 	return;
 }
 
@@ -359,13 +392,12 @@ HRESULT InitializeCom()
 		return hr;
 }
 
-void UnhookAllWinEventProcessSpecificHooks()
-{
-	for (auto & specificProcessHook : ProcessWinEventHooks)
-	{
-		UnhookWinEvent(specificProcessHook.second);
-}
-	ProcessWinEventHooks.clear();
+int keepRunning = 1; // Goes to 0 on WM_CLOSE.
+LPCTSTR msgWindowClassName = L"DictationBridgeJFWHelper";
+
+LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In_ LPARAM lparam) {
+	if (msg == WM_CLOSE) keepRunning = 0;
+	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
 int CALLBACK WinMain(_In_ HINSTANCE hInstance,
