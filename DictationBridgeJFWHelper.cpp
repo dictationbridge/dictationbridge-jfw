@@ -1,10 +1,9 @@
 #define UNICODE
 #include <windows.h>
-#include <TlHelp32.h>
+#include <Psapi.h>
 #include <ole2.h>
 #include <AtlBase.h>
 #include <algorithm>
-#include <comdef.h>
 #include <sstream>
 #include <string>
 #include <map>
@@ -17,7 +16,6 @@ using namespace std;
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "oleacc.lib")
-#pragma comment(lib, "comsuppw.lib")
 
 #define ERR(x, msg) do { \
 if(x != S_OK) {\
@@ -36,84 +34,43 @@ CComPtr<IUnsecuredApartment> pUnsecApp = nullptr;
 CComPtr<IUnknown> pStubUnk = nullptr;
 CComPtr<IWbemObjectSink> pStubSink = nullptr;
 
-HRESULT FindIdsIfProcessIsRunning(__in_z LPCWSTR wzExeName, __out DWORD** ppdwProcessIds, __out DWORD* pcProcessIds)
+multimap<wstring, DWORD> listAllRunningProcesses()
 {
-	HRESULT hr = S_OK;
-	DWORD er = ERROR_SUCCESS;
-	HANDLE hSnapshot = INVALID_HANDLE_VALUE;
-	bool fContinue = false;
-	PROCESSENTRY32 peData = { sizeof(peData) };
-	hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	if (hSnapshot == INVALID_HANDLE_VALUE)
+multimap<wstring, DWORD> result;
+	DWORD aProcesses[1024], cbNeeded, cProcesses;
+	unsigned int i;
+	TCHAR szProcessName[1024] = {};
+
+	if (EnumProcesses(aProcesses, sizeof(aProcesses), &cbNeeded))
 	{
-		er = GetLastError();
-		hr = HRESULT_FROM_WIN32(er);
-			goto LExit;
-	}
-	
-	fContinue = Process32First(hSnapshot, &peData);
-	while (fContinue)
-	{
-		if (wcsicmp(wzExeName, peData.szExeFile) == 0)
+		// Calculate how many process identifiers were returned.
+
+		cProcesses = cbNeeded / sizeof(DWORD);
+
+		// obtain the name of each process.
+
+		for (i = 0; i < cProcesses; i++)
 		{
-			if (!*ppdwProcessIds)
+			if (aProcesses[i] != 0)
 			{
-				hr = S_OK;
-				*ppdwProcessIds = static_cast<DWORD*>(HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(DWORD)));
-				
-				if (*ppdwProcessIds == nullptr)
+				//open the process and obtain the name.
+				auto procHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, aProcesses[i]);
+				if (procHandle != NULL)
 				{
-					hr = E_OUTOFMEMORY;
-					goto LExit;
+					DWORD len = 1024;
+					auto res = QueryFullProcessImageName(procHandle, 0, szProcessName, &len);
+					if (res != 0)
+					{
+						wstring path = szProcessName;
+						result.insert(make_pair(path.substr(path.find_last_of(L"\\") + 1), aProcesses[i]));
+					}
+				}
+				CloseHandle(procHandle);
 			}
-			}
-			else
-			{
-				DWORD* pdwReAllocReturnedPids = static_cast<DWORD*>(HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, *ppdwProcessIds, sizeof(DWORD) * ((*pcProcessIds) + 1)));
-				
-				if (pdwReAllocReturnedPids == nullptr)
-				{
-					hr = E_OUTOFMEMORY;
-					goto LExit;
-			}
-				
-				*ppdwProcessIds = pdwReAllocReturnedPids;
-			}
-			
-			(*ppdwProcessIds)[*pcProcessIds] = peData.th32ProcessID;
-			++(*pcProcessIds);
 		}
-		fContinue = Process32NextW(hSnapshot, &peData);
 	}
-	
-	er = ::GetLastError();
-	if (er == ERROR_NO_MORE_FILES && *pcProcessIds >0)
-	{
-		hr = S_OK;
-	}
-	else
-	{
-		hr = HRESULT_FROM_WIN32(er);
-	}
-
-LExit:
-	if (hSnapshot != nullptr)
-	{
-		CloseHandle(hSnapshot);
-	}
-	
-	return hr;
+	return result;
 }
-
-void initJAWS() 
-{
-		CLSID JFWClass;
-HRESULT hr = S_FALSE;
-		hr = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
-		ERR(hr, L"Couldn't get Jaws interface ID");
-		hr = pJfw.CoCreateInstance(JFWClass);
-		ERR(hr, L"Couldn't create Jaws interface");
-	}
 
 void speak(std::wstring text) {
 	CComBSTR bS = CComBSTR(text.size(), text.data());
@@ -121,6 +78,22 @@ void speak(std::wstring text) {
 	CComBool bResult;
 	pJfw->SayString(bS, silence, &bResult);
 }
+
+void initJAWS() 
+{
+	//Get a list of all the running process names and ids.
+	std::multimap<wstring, DWORD> runningProcesses = listAllRunningProcesses();
+	//initialize JAWS if it is running.
+	if (runningProcesses.count(L"jfw.exe") > 0)
+	{
+		CLSID JFWClass;
+		HRESULT hr = S_FALSE;
+		hr = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
+		ERR(hr, L"Couldn't get Jaws interface ID");
+		hr = pJfw.CoCreateInstance(JFWClass);
+		ERR(hr, L"Couldn't create Jaws interface");
+	}
+	}
 
 //These are string constants for the microphone status, as well as the status itself:
 //The pointer below is set to the last one we saw.
@@ -200,31 +173,20 @@ HRESULT SetWinEventHookForProcess(_In_ DWORD eventMin, _In_ DWORD eventMax, _In_
 
 void InitializeWindowsHooksForDragonProcesses()
 {
-	DWORD *prgProcessIds = nullptr;
-	DWORD cProcessIds = 0, iProcessId;
-	auto res = FindIdsIfProcessIsRunning(L"natspeak.exe", &prgProcessIds, &cProcessIds);
-	if (SUCCEEDED(res) && cProcessIds >0)
+	HRESULT hr = S_FALSE;
+	multimap<wstring, DWORD> runningProcesses = listAllRunningProcesses();
+	auto wantedProcess = runningProcesses.find(L"natspeak.exe");
+	if (wantedProcess != runningProcesses.end())
 	{
-		for (iProcessId = 0; iProcessId < cProcessIds; ++iProcessId)
-		{
-			res = SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, prgProcessIds[iProcessId]);
-			}
-		HeapFree(GetProcessHeap(), 0, static_cast<LPVOID>(prgProcessIds));
-		prgProcessIds = NULL;
-		cProcessIds = 0;
+			HRESULT hr = SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, wantedProcess->second);
 	}
-
-	//Find an initialize the DragonBar hook.
-	res = S_FALSE;
-	res = FindIdsIfProcessIsRunning(L"dragonbar.exe", &prgProcessIds, &cProcessIds);
-	if (SUCCEEDED(res) && cProcessIds >0)
+	
+	//hook the DragonBar process.
+	hr = S_FALSE;
+	wantedProcess = runningProcesses.find(L"dragonbar.exe");
+	if (wantedProcess != runningProcesses.end())
 	{
-		for (iProcessId = 0; iProcessId < cProcessIds; ++iProcessId)
-		{
-			res = SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, prgProcessIds[iProcessId]);
-		}
-		HeapFree(GetProcessHeap(), 0, static_cast<LPVOID>(prgProcessIds));
-		prgProcessIds = NULL;
+			HRESULT hr = SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, wantedProcess->second);
 	}
 	}
 
@@ -284,7 +246,7 @@ void WINAPI processCreatedCallback(DWORD processID, LPCWSTR processName)
 	}
 	else if (wcsicmp(processName, NVDAProcessName) == 0)
 	{
-		//NVDA has been started, so we unhook all windows hooks and release the JAWS pointer s we assume something has gone wrong with JAWS.
+		//NVDA has been started, so we unhook all windows hooks and release the JAWS pointer as we assume something has gone wrong with JAWS.
 		pJfw.Release();
 		pJfw = nullptr;
 		UnhookAllWinEventProcessSpecificHooks();
@@ -313,19 +275,9 @@ void WINAPI processDeletedCallback(LPCWSTR processName)
 	else if (wcsicmp(processName, NVDAProcessName) == 0)
 	{
 		//NVDA has exited, so check whether JAWS and dragon are running and initialize them if necessary.
-		//Initialize JAWS if it is running.
-		DWORD *prgProcessIds = nullptr;
-		DWORD cProcessIds = 0, iProcessId;
-		if (SUCCEEDED(FindIdsIfProcessIsRunning(L"jfw.exe", &prgProcessIds, &cProcessIds)) && cProcessIds >1)
-		{
-			HeapFree(GetProcessHeap(), 0, prgProcessIds);
-			prgProcessIds = NULL;
-			cProcessIds = 0;
-			initJAWS();
-		}
-
+		initJAWS();
 		InitializeWindowsHooksForDragonProcesses();
-	}
+		}
 	return;
 }
 
@@ -393,7 +345,7 @@ HRESULT InitializeCom()
 }
 
 int keepRunning = 1; // Goes to 0 on WM_CLOSE.
-LPCTSTR msgWindowClassName = L"DictationBridgeJFWHelper";
+LPCWSTR msgWindowClassName = L"DictationBridgeJFWHelper";
 
 LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In_ LPARAM lparam) {
 	if (msg == WM_CLOSE) keepRunning = 0;
@@ -430,18 +382,8 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 		return 0;
 	}
 	
-	//Initialize JAWS if it is running.
-	DWORD *prgProcessIds = nullptr;
-	DWORD cProcessIds = 0, iProcessId;
-	hr = FindIdsIfProcessIsRunning(L"jfw.exe", &prgProcessIds, &cProcessIds);
-	if (SUCCEEDED(hr) && cProcessIds >1)
-	{
-		HeapFree(GetProcessHeap(), 0, prgProcessIds);
-		prgProcessIds = NULL;
-		cProcessIds = 0;
-		initJAWS();
-	}
-
+	initJAWS();
+		
 	auto started = DBMaster_Start();
 	if(!started) {
 		printf("Couldn't start DictationBridge-core\n");
@@ -453,6 +395,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	
 	//register to receive events from both the natspeak and DragonBar processes.
 	InitializeWindowsHooksForDragonProcesses();
+	
 	StartProcessTracking();
 	
 	MSG msg;
