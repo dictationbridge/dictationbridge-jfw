@@ -112,22 +112,9 @@ void announceMicrophoneState(const std::wstring state) {
 	else speak(L"Microphone in unknown state.");
 }
 
-wchar_t processNameBuffer[1024] = { 0 };
-
-void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) {
-	//First, is it coming from natspeak.exe?
-	DWORD procId;
-	GetWindowThreadProcessId(hwnd, &procId);
-	auto procHandle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, procId);
-	//We can't recover from this failing, so abort.
-	if (procHandle == NULL) return;
-	DWORD len = 1024;
-	auto res = QueryFullProcessImageName(procHandle, 0, processNameBuffer, &len);
-	CloseHandle(procHandle);
-	if (res == 0) return;
-	std::wstring processName = processNameBuffer;
-	if (processName.find(L"dragonbar.exe") == std::string::npos
-		&& processName.find(L"natspeak.exe") == std::string::npos) return;
+void CALLBACK nameChanged(HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd, LONG idObject, LONG idChild, DWORD dwEventThread, DWORD dwmsEventTime) 
+{
+//We know the text is coming from either natspeak or the dragonbar processes.
 	//Attempt to get the new text.
 	CComPtr<IAccessible> pAcc;
 	CComVariant vChild;
