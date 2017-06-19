@@ -81,18 +81,12 @@ void speak(std::wstring text) {
 
 void initJAWS() 
 {
-	//Get a list of all the running process names and ids.
-	std::multimap<wstring, DWORD> runningProcesses = listAllRunningProcesses();
-	//initialize JAWS if it is running.
-	if (runningProcesses.count(L"jfw.exe") > 0)
-	{
 		CLSID JFWClass;
 		HRESULT hr = S_FALSE;
 		hr = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
 		ERR(hr, L"Couldn't get Jaws interface ID");
 		hr = pJfw.CoCreateInstance(JFWClass);
 		ERR(hr, L"Couldn't create Jaws interface");
-	}
 	}
 
 //These are string constants for the microphone status, as well as the status itself:
@@ -154,7 +148,10 @@ HRESULT SetWinEventHookForProcess(_In_ DWORD eventMin, _In_ DWORD eventMax, _In_
 			ProcessWinEventHooks.insert(make_pair(L"natspeak.exe", hook));
 		hr =S_OK;
 		}
-		
+		else 
+		{
+			MessageBox(NULL, L"Hooking failed.", NULL, NULL); \
+		}
 		return hr;
 }
 
@@ -177,7 +174,8 @@ void InitializeWindowsHooksForDragonProcesses()
 	}
 	}
 
-void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR textUnprocessed) {
+void WINAPI textCallback(HWND hwnd, DWORD startPosition, LPCWSTR textUnprocessed) 
+{
 	//We need to replace \r with nothing.
 std::wstring text =textUnprocessed;
 text.erase(std::remove_if(begin(text), end(text), [] (wchar_t checkingCharacter) {
@@ -219,18 +217,18 @@ const LPCWSTR natspeakProcessName = L"natspeak.exe";
 const LPCWSTR dragonbarProcessName = L"dragonbar.exe";
 const LPCWSTR NVDAProcessName = L"nvda.exe";
 
-void WINAPI processCreatedCallback(DWORD processID, LPCWSTR processName)
+void HandleProcessCreation(DWORD processID, LPCWSTR processName)
 {
 	if (wcsicmp(processName, jawsProcessName) == 0)
 	{
-		//JAWS has bn started, so initialize the Freedom scientific API.
+		//JAWS has been started, so initialize the Freedom scientific API.
 		initJAWS();
 	}
 	else if (wcsicmp(processName, dragonbarProcessName) == 0 || wcsicmp(processName, natspeakProcessName) ==0 )
 	{
 		//The dragon bar or natspeak processes have started, so hook the NameChanged event.
-		 SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, processID);
-	}
+		 HRESULT hr =SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, processID);
+		 }
 	else if (wcsicmp(processName, NVDAProcessName) == 0)
 	{
 		//NVDA has been started, so we unhook all windows hooks and release the JAWS pointer as we assume something has gone wrong with JAWS.
@@ -241,7 +239,7 @@ void WINAPI processCreatedCallback(DWORD processID, LPCWSTR processName)
 	return;
 }
 
-void WINAPI processDeletedCallback(LPCWSTR processName)
+void HandleProcessDeletion(LPCWSTR processName)
 {
 	if (wcsicmp(processName, jawsProcessName) == 0)
 	{
@@ -251,7 +249,7 @@ void WINAPI processDeletedCallback(LPCWSTR processName)
 	}
 	else if (wcsicmp(processName, natspeakProcessName) == 0 || wcsicmp(processName, dragonbarProcessName) == 0)
 	{
-		//the natspeak process has terminated, so unhook the winevent for that process.
+		//the natspeak or dragonbar process has terminated, so unhook the winevent for that process.
 		auto processHook = ProcessWinEventHooks.find(processName);
 		if (processHook != end(ProcessWinEventHooks))
 		{
@@ -264,16 +262,16 @@ void WINAPI processDeletedCallback(LPCWSTR processName)
 		//NVDA has exited, so check whether JAWS and dragon are running and initialize them if necessary.
 		initJAWS();
 		InitializeWindowsHooksForDragonProcesses();
-		}
+	}
 	return;
 }
 
-void StartProcessTracking()
+void StartProcessTracking(HWND hNotificationWindow)
 {
 	CComBSTR bRootNamespace = L"ROOT\\CIMV2";
 	CComBSTR bWQL = L"WQL";
 	CComBSTR bWQLQuery = "SELECT * FROM __InstanceOperationEvent WITHIN 1 WHERE TargetInstance ISA 'Win32_Process'";
-//Com and security are initialized in WinMain.
+	//Com and security are initialized in WinMain.
 	HRESULT hr = S_OK;
 	// Obtain the initial locator to WMI
 	hr = pLoc.CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER);
@@ -295,8 +293,7 @@ void StartProcessTracking()
 	ERR(hr, L"Unable to create the unsecured apartment.");
 
 	pProcessMonitor = new ProcessMonitor;
-	pProcessMonitor->SetProcessCreatedCallback(&processCreatedCallback);
-	pProcessMonitor->SetProcessDeletedCallback(&processDeletedCallback);
+	pProcessMonitor->SetProcessNotificationWindow(hNotificationWindow);
 	pProcessMonitor->AddRef();
 
 	hr = pUnsecApp->CreateObjectStub(pProcessMonitor, &pStubUnk);
@@ -328,15 +325,32 @@ HRESULT InitializeCom()
 		// Set general COM security levels
 		hr = CoInitializeSecurity(NULL, -1, NULL, NULL, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE, NULL);
 	}
-		return hr;
+	return hr;
 }
 
 int keepRunning = 1; // Goes to 0 on WM_CLOSE.
 LPCWSTR msgWindowClassName = L"DictationBridgeJFWHelper";
 
-LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In_ LPARAM lparam) {
-	if (msg == WM_CLOSE) keepRunning = 0;
-	return DefWindowProc(hwnd, msg, wparam, lparam);
+LRESULT CALLBACK exitProc(_In_ HWND hwnd, _In_ UINT msg, _In_ WPARAM wparam, _In_ LPARAM lparam)
+{
+	switch (msg)
+	{
+	case DBJH_PROCESSSTARTED:
+		HandleProcessCreation((DWORD)lparam, (LPCWSTR)wparam);
+		return 0;
+		break;
+	case DBJH_PROCESSTERMINATED:
+		HandleProcessDeletion((LPCWSTR)wparam);
+		return 0;
+		break;
+	case WM_CLOSE:
+		keepRunning = 0;
+		return 0;
+		break;
+	default:
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+		break;
+	}
 }
 
 int CALLBACK WinMain(_In_ HINSTANCE hInstance,
@@ -368,9 +382,14 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 		CoUninitialize();
 		return 0;
 	}
+
+	//Initialize the JAWS api if JAWS is running.
+	std::multimap<wstring, DWORD> runningProcesses = listAllRunningProcesses();
+	if (runningProcesses.count(L"jfw.exe") > 0)
+	{
+		initJAWS();
+	}
 	
-	initJAWS();
-		
 	auto started = DBMaster_Start();
 	if(!started) {
 		printf("Couldn't start DictationBridge-core\n");
@@ -383,7 +402,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance,
 	//register to receive events from both the natspeak and DragonBar processes.
 	InitializeWindowsHooksForDragonProcesses();
 	
-	StartProcessTracking();
+	StartProcessTracking(msgWindowHandle);
 	
 	MSG msg;
 	while(GetMessage(&msg, NULL, NULL, NULL) > 0) {

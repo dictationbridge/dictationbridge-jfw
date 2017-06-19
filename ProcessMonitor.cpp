@@ -4,121 +4,91 @@
 
 ULONG ProcessMonitor::AddRef()
 {
-    return InterlockedIncrement(&m_lRef);
+	return InterlockedIncrement(&m_lRef);
 }
 
 ULONG ProcessMonitor::Release()
 {
-    LONG lRef = InterlockedDecrement(&m_lRef);
-    if(lRef == 0)
-        delete this;
-    return lRef;
+	LONG lRef = InterlockedDecrement(&m_lRef);
+	if (lRef == 0)
+		delete this;
+	return lRef;
 }
 
 HRESULT ProcessMonitor::QueryInterface(REFIID riid, void** ppv)
 {
-    if (riid == IID_IUnknown || riid == IID_IWbemObjectSink)
-    {
-        *ppv = (IWbemObjectSink *) this;
-        AddRef();
-        return WBEM_S_NO_ERROR;
-    }
-    else return E_NOINTERFACE;
+	if (riid == IID_IUnknown || riid == IID_IWbemObjectSink)
+	{
+		*ppv = (IWbemObjectSink *) this;
+		AddRef();
+		return WBEM_S_NO_ERROR;
+	}
+	else return E_NOINTERFACE;
 }
 
 
 HRESULT ProcessMonitor::Indicate(long lObjectCount,
-    IWbemClassObject **apObjArray)
+	IWbemClassObject **apObjArray)
 {
- HRESULT hres = S_OK;
- CComVariant vData = NULL;
- CComPtr<IWbemClassObject> pTargetInstance; 
- CComBSTR bClassPropertyName = L"__CLASS";
- CComBSTR bTargetInstancePropertyName = L"TargetInstance";
- CComBSTR bProcessName = L"Name";
- CComBSTR bProcessId = L"ProcessId";
- wstring sClass;
- wstring sProcessName;
- DWORD dProcessId;
+	HRESULT hres = S_OK;
+	CComVariant vData = NULL;
+	CComPtr<IWbemClassObject> pTargetInstance;
+	CComBSTR bClassPropertyName = L"__CLASS";
+	CComBSTR bTargetInstancePropertyName = L"TargetInstance";
+	CComBSTR bProcessName = L"Name";
+	CComBSTR bProcessId = L"ProcessId";
+	LPCWSTR lzClass;
+	LPCWSTR lzProcessName;
+	DWORD dProcessId;
 
- for (int i = 0; i < lObjectCount; i++)
-{
-	hres = apObjArray[i]->Get(bClassPropertyName, 0, &vData, 0, 0);
-	if (SUCCEEDED(hres))
+	for (int i = 0; i < lObjectCount; i++)
 	{
-		sClass = vData.bstrVal;
-		if (sClass.compare(L"__InstanceCreationEvent") ==0 || sClass.compare(L"__InstanceDeletionEvent") ==0)
+		//get the target instance property.
+		hres = apObjArray[i]->Get(bTargetInstancePropertyName, 0, &vData, 0, 0);
+		if (SUCCEEDED(hres))
 		{
-			//get the target instance property.
-			hres = apObjArray[i]->Get(bTargetInstancePropertyName, 0, &vData, 0, 0);
+			//Obtained the TargetInstance property, now query fo the IWBEMCLASSOBJECT interface.				CComPtr<IWbemClassObject> pTargetInstance;
+			IUnknown* str = vData.punkVal;
+			hres = str->QueryInterface(IID_IWbemClassObject, reinterpret_cast<void**>(&pTargetInstance));
 			if (SUCCEEDED(hres))
 			{
-				//Obtained the TargetInstance property, now query fo the IWBEMCLASSOBJECT interface.				CComPtr<IWbemClassObject> pTargetInstance;
-				IUnknown* str = vData.punkVal;
-				hres = str->QueryInterface(IID_IWbemClassObject, reinterpret_cast< void** >(&pTargetInstance));
+				//Obtain the process name.
+				lzProcessName = L"";
+				hres = pTargetInstance->Get(bProcessName, 0, &vData, 0, 0);
 				if (SUCCEEDED(hres))
 				{
-					//Obtain the process name.
-					hres =pTargetInstance->Get(bProcessName, 0, &vData, 0, 0);
+					lzProcessName = vData.bstrVal;
+					lzClass = L"";
+					hres = apObjArray[i]->Get(bClassPropertyName, 0, &vData, 0, 0);
 					if (SUCCEEDED(hres))
 					{
-						sProcessName = vData.bstrVal;
-						if (sClass.compare(L"__InstanceCreationEvent") == 0)
+						lzClass = vData.bstrVal;
+						if (wcsicmp(lzClass, L"__InstanceCreationEvent") == 0)
 						{
-							//We are creating a process therefore we need the process Id.
+							//A process has been created so we need the process id.
 							hres = pTargetInstance->Get(bProcessId, 0, &vData, 0, 0);
 							if (SUCCEEDED(hres))
 							{
 								dProcessId = vData.lVal;
-								if (processCreatedCallback != nullptr)
+								if (hNotificationWindow != nullptr)
 								{
-									processCreatedCallback(dProcessId, sProcessName.c_str());
-}
-								else 
-								{ 
-									MessageBox(NULL, L"The process created callback is null.", L"Process creation", MB_OK | MB_ICONERROR);
+									PostMessage(hNotificationWindow, DBJH_PROCESSSTARTED, (WPARAM)lzProcessName, (LPARAM)dProcessId);
 								}
-							}
-							else
-							{
-								MessageBox(NULL, L"Unable to obtain the process Id.", L"Process creation", MB_OK | MB_ICONERROR);
-							}
+								}
 						}
-						else if (sClass.compare(L"__InstanceDeletionEvent") == 0)
+						else if (wcsicmp(lzClass, L"__InstanceDeletionEvent") == 0)
 						{
-							//We are deleting a process.
-							if (processDeletedCallback != nullptr)
+							//A process has been terminated.
+							if (hNotificationWindow != nullptr)
 							{
-								processDeletedCallback(sProcessName.c_str());
-							}
-							else
-							{
-								MessageBox(NULL, L"The process deleted callback is null.", L"Process creation", MB_OK | MB_ICONERROR);
+								PostMessage(hNotificationWindow, DBJH_PROCESSTERMINATED, (WPARAM)lzProcessName, 0);
 							}
 						}
 					}
-					else
-					{
-						MessageBox(NULL, L"Unable to obtain the process name.", L"Process creation", MB_OK | MB_ICONERROR);
-					}
 				}
-				else
-				{
-					MessageBox(NULL, L"Unable to query for the IWBEMClassObject interface.", L"Process creation", MB_OK | MB_ICONERROR);
-				}
-			}
-			else
-			{
-				MessageBox(NULL, L"Unable to obtain the target instance property.", L"Process creation", MB_OK | MB_ICONERROR);
 			}
 		}
-	}
-	else
-	{
-		MessageBox(NULL, L"Unable to obtain the class of the event.", L"Process creation", MB_OK | MB_ICONERROR);
-	}
- }    
-
+ }
 return WBEM_S_NO_ERROR;
 }
 
@@ -132,13 +102,8 @@ HRESULT ProcessMonitor::SetStatus(
     return WBEM_S_NO_ERROR;
 }    
 
-void ProcessMonitor::SetProcessCreatedCallback(TProcessCreatedCallback callback)
+void ProcessMonitor::SetProcessNotificationWindow(HWND window)
 {
-processCreatedCallback =callback;
-}
-
-void ProcessMonitor::SetProcessDeletedCallback(TProcessDeletedCallback callback)
-{
-	processDeletedCallback = callback;
+	hNotificationWindow = window;
 }
 // end of ProcessMonitor.cpp

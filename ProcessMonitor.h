@@ -14,33 +14,24 @@
 using namespace std;
 # pragma comment(lib, "wbemuuid.lib")
 #include <windows.h>
-#ifdef __cplusplus
-extern "C"
-{
-#endif
 
-	typedef void (WINAPI *TProcessCreatedCallback)(DWORD processID, LPCWSTR text);
-	typedef void (WINAPI *TProcessDeletedCallback)(LPCWSTR text);
-
-#ifdef __cplusplus
-}
-#endif
+//The windows messages we need.
+#define DBJH_PROCESSSTARTED WM_USER +1
+#define DBJH_PROCESSTERMINATED WM_USER +2
 
 class ProcessMonitor: public IWbemObjectSink
 {
     LONG m_lRef;
     bool bDone;
-	TProcessCreatedCallback processCreatedCallback;
-	TProcessDeletedCallback processDeletedCallback;
+	HWND hNotificationWindow;
 
 public:
-ProcessMonitor() 
-	{ 
-		m_lRef = 0; 
-		processCreatedCallback = nullptr;
-		processDeletedCallback = nullptr;
+	ProcessMonitor()
+	{
+		m_lRef = 0;
+		hNotificationWindow = nullptr;
 	}
-   
+	
 	~ProcessMonitor() 
 	{ 
 		bDone = true; 
@@ -60,7 +51,7 @@ ProcessMonitor()
             /* [in] */ BSTR strParam,
             /* [in] */ IWbemClassObject __RPC_FAR *pObjParam
             );
-void SetProcessCreatedCallback(TProcessCreatedCallback callback);
-void SetProcessDeletedCallback(TProcessDeletedCallback callback);
+
+	void SetProcessNotificationWindow(HWND window);
 };
 #endif    // end of EventSink.h
