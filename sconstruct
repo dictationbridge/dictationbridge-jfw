@@ -4,10 +4,9 @@ env.Append(CXXFLAGS=['/EHsc'])
 
 dbCore = SConscript(['dictationbridge-core/SConstruct'])
 dbCoreFiles = dbCore[0]
-tlbFile,headerFile,iidSourceFile,proxySourceFile,dlldataSourceFile=env.TypeLibrary(source='FSAPI.idl')
 DictationBridgeJFWHelper = env.Program(
 	target='DictationBridgeJFWHelper',
-	source=['fsapi_i.c','ProcessMonitor.cpp','DictationBridgeJFWHelper.cpp'],
+	source=['ProcessMonitor.cpp','DictationBridgeJFWHelper.cpp'],
 	LIBS = 'DictationBridgeMaster32',
 	LIBPATH = 'dictationbridge-core/build/x86/master',
     LINKFLAGS = "/SUBSYSTEM:WINDOWS",
