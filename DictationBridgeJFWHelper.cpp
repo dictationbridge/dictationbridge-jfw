@@ -2,14 +2,18 @@
 #include <windows.h>
 #include <Psapi.h>
 #include <ole2.h>
-#include <AtlBase.h>
 #include <algorithm>
 #include <sstream>
 #include <string>
 #include <map>
 #include <utility>
 using namespace std;
-#include "FSAPI.h"
+
+#include <comdef.h>
+#include <atlstr.h>
+#include <atlcom.h>
+#include <atlbase.h>
+
 #include "dictationbridge-core/master/master.h"
 #include "combool.h"
 #include "ProcessMonitor.h"
@@ -24,7 +28,14 @@ exit(1);\
 }\
 } while(0)
 
-CComPtr<IJawsApi> pJfw =nullptr;
+CComDispatchDriver jawsServer;
+CComPtr<IDispatch> lpTDispatch;
+_variant_t vResult;
+char lpResult[512];
+DWORD dwResult;
+HRESULT create_r;
+HRESULT function_r;
+
 ProcessMonitor *pProcessMonitor;
 map<wstring, HWINEVENTHOOK> ProcessWinEventHooks; //Hold the WinEvent hooks for each process.
 //variables for WMI.
@@ -72,22 +83,47 @@ multimap<wstring, DWORD> result;
 	return result;
 }
 
-void speak(std::wstring text) {
-	CComBSTR bS = CComBSTR(text.size(), text.data());
-	CComBool silence = false;
-	CComBool bResult;
-	pJfw->SayString(bS, silence, &bResult);
+void speak(std::wstring text) 
+{
+	BOOL silence = false;
+	
+	function_r = jawsServer.Invoke2(_bstr_t("SayString"), &_variant_t(text.c_str()), &_variant_t(silence), &vResult);
 }
 
-void initJAWS() 
+bool LoadCOM(string API)
 {
-		CLSID JFWClass;
-		HRESULT hr = S_FALSE;
-		hr = CLSIDFromProgID(L"FreedomSci.JawsApi", &JFWClass);
-		ERR(hr, L"Couldn't get Jaws interface ID");
-		hr = pJfw.CoCreateInstance(JFWClass);
-		ERR(hr, L"Couldn't create Jaws interface");
+	//Create the JawsApi object on the local system 
+	create_r = lpTDispatch.CoCreateInstance(_bstr_t(API.c_str()));
+
+	/*if (!SUCCEEDED(create_r))
+	{
+	lpTDispatch.Release();
+	}*/
+
+	//return true if the object is created successfully
+	return (SUCCEEDED(create_r) ? true : false);
+}
+
+void initJAWS()
+{
+	//Initialize the COM library for this thread
+	CoInitialize(NULL);
+
+	//Initialize the result and hresult to NULL
+	dwResult = NULL;
+	function_r = NULL;
+	create_r = NULL;
+	
+	//Attempt to load the Jaws API from registry
+	if (LoadCOM("FreedomSci.JawsApi"))
+	{
+		jawsServer = lpTDispatch;
+			}
+	else
+	{
+		MessageBox(NULL, L"Unable to load FSAPI.", NULL, NULL);
 	}
+}
 
 //These are string constants for the microphone status, as well as the status itself:
 //The pointer below is set to the last one we saw.
@@ -221,10 +257,10 @@ void HandleProcessCreation(DWORD processID, LPCWSTR processName)
 {
 	if (wcsicmp(processName, jawsProcessName) == 0)
 	{
-		//JAWS has been started, so initialize the Freedom scientific API.
+		//JAWS has been started, so load the JFWAPI.DLL.
 		initJAWS();
-	}
-	else if (wcsicmp(processName, dragonbarProcessName) == 0 || wcsicmp(processName, natspeakProcessName) ==0 )
+		}
+	else if (wcsicmp(processName, dragonbarProcessName) == 0 || wcsicmp(processName, natspeakProcessName) == 0)
 	{
 		//The dragon bar or natspeak processes have started, so hook the NameChanged event.
 		 HRESULT hr =SetWinEventHookForProcess(EVENT_OBJECT_NAMECHANGE, EVENT_OBJECT_NAMECHANGE, nameChanged, processID);
@@ -232,8 +268,8 @@ void HandleProcessCreation(DWORD processID, LPCWSTR processName)
 	else if (wcsicmp(processName, NVDAProcessName) == 0)
 	{
 		//NVDA has been started, so we unhook all windows hooks and release the JAWS pointer as we assume something has gone wrong with JAWS.
-		pJfw.Release();
-		pJfw = nullptr;
+		// pJfw.Release();
+		// pJfw = nullptr;
 		UnhookAllWinEventProcessSpecificHooks();
 	}
 	return;
@@ -242,13 +278,21 @@ void HandleProcessCreation(DWORD processID, LPCWSTR processName)
 void HandleProcessDeletion(LPCWSTR processName)
 {
 	if (wcsicmp(processName, jawsProcessName) == 0)
-	{
-		//JAWS has exited, so release the API pointer.
-		pJfw.Release();
-		pJfw = nullptr;
-	}
+		{
+		//JAWS has exited, so release the COM server
+		//If the COM object was successfully created enter this if block
+		if (SUCCEEDED(create_r))
+		{
+			//Make sure this is released otherwise CoUnitialize
+			//attempts to release a NULL pointer
+			jawsServer.Release();
+			lpTDispatch.Release();
+			CoUninitialize();
+		}
+
+		}
 	else if (wcsicmp(processName, natspeakProcessName) == 0 || wcsicmp(processName, dragonbarProcessName) == 0)
-	{
+		{
 		//the natspeak or dragonbar process has terminated, so unhook the winevent for that process.
 		auto processHook = ProcessWinEventHooks.find(processName);
 		if (processHook != end(ProcessWinEventHooks))
