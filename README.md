@@ -6,7 +6,7 @@ Support for Dragon NaturallySpeaking is still under heavy development.
 
 ## Building
 
-To build this package, you need Python 2.7, a recent version of SCons, [NSIS](http://nsis.sourceforge.net/Main_Page), and Visual Studio 2015.
+To build this package, you need Python 2.7, a recent version of SCons, [NSIS](http://nsis.sourceforge.net/Main_Page), and Visual Studio 2015 or 2017. If using Visual Studio 2017, be sure to install MFC/ATL tools.
 
 First, fetch Git submodules with this command:
 
